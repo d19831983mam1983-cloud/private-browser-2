@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#0B0F1A</color>
+    <color name="glass_fill">#33FFFFFF</color>
+    <color name="glass_stroke">#4DFFFFFF</color>
+    <color name="accent">#5B8DEF</color>
+    <color name="accent2">#8B5CF6</color>
+</resources>
