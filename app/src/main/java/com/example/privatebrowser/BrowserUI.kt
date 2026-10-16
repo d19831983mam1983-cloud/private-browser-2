@@ -70,26 +70,17 @@ class BrowserUI(private val ctx: Context) {
         urlBox.background = gradientGlass(22)
         urlBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         urlBox.imeOptions = EditorInfo.IME_ACTION_GO
-        urlBox.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_GO) {
-                onOpen?.invoke(urlBox.text.toString())
-                true
-            } else false
+        urlBox.setOnEditorActionListener { _, a, _ ->
+            if (a == EditorInfo.IME_ACTION_GO) { onOpen?.invoke(urlBox.text.toString()); true } else false
         }
-        urlBox.setOnLongClickListener {
-            onUrlLongPress?.invoke(urlBox.text.toString())
-            true
-        }
+        urlBox.setOnLongClickListener { onUrlLongPress?.invoke(urlBox.text.toString()); true }
         urlRow.addView(urlBox, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-
         topBlock.addView(urlRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         bar = ProgressBar(ctx, null, android.R.attr.progressBarStyleHorizontal)
         bar.max = 100
         bar.visibility = View.GONE
-        bar.progressTintList = android.content.res.ColorStateList.valueOf(
-            Color.parseColor("#5B8DEF")
-        )
+        bar.progressTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#5B8DEF"))
         topBlock.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, dp(2)))
 
         tabStripWrap = HorizontalScrollView(ctx)
@@ -101,7 +92,6 @@ class BrowserUI(private val ctx: Context) {
         tabStrip.gravity = Gravity.CENTER_VERTICAL
         tabStripWrap.addView(tabStrip)
         topBlock.addView(tabStripWrap, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
         root.addView(topBlock, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         webContainer = FrameLayout(ctx)
@@ -116,10 +106,7 @@ class BrowserUI(private val ctx: Context) {
 
         val tabsBtn = textNavButton("[=]")
         tabsBtn.setOnClickListener { onTabsDialog?.invoke() }
-        tabsBtn.setOnLongClickListener {
-            onConfirmCloseAll?.invoke()
-            true
-        }
+        tabsBtn.setOnLongClickListener { onConfirmCloseAll?.invoke(); true }
 
         val tabsWrapper = FrameLayout(ctx)
         tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
@@ -127,17 +114,16 @@ class BrowserUI(private val ctx: Context) {
         tabsCountBadge.setTextColor(Color.WHITE)
         tabsCountBadge.textSize = 10f
         tabsCountBadge.gravity = Gravity.CENTER
-        val badgeBg = GradientDrawable()
-        badgeBg.shape = GradientDrawable.OVAL
-        badgeBg.setColor(Color.parseColor("#5B8DEF"))
-        tabsCountBadge.background = badgeBg
-        val badgeLp = FrameLayout.LayoutParams(dp(20), dp(20))
-        badgeLp.gravity = Gravity.TOP or Gravity.END
-        tabsWrapper.addView(tabsCountBadge, badgeLp)
+        val bbg = GradientDrawable()
+        bbg.shape = GradientDrawable.OVAL
+        bbg.setColor(Color.parseColor("#5B8DEF"))
+        tabsCountBadge.background = bbg
+        val blp = FrameLayout.LayoutParams(dp(20), dp(20))
+        blp.gravity = Gravity.TOP or Gravity.END
+        tabsWrapper.addView(tabsCountBadge, blp)
 
         val newTabBtn = textNavButton("+")
         newTabBtn.setOnClickListener { onNewTab?.invoke(it) }
-
         val settingsBtn = textNavButton("*")
         settingsBtn.setOnClickListener { onSettings?.invoke(it) }
 
@@ -146,7 +132,6 @@ class BrowserUI(private val ctx: Context) {
         bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
         bottomBar.addView(View(ctx), LinearLayout.LayoutParams(dp(32), 1))
         bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-
         root.addView(bottomBar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return root
     }
@@ -154,31 +139,17 @@ class BrowserUI(private val ctx: Context) {
     fun animatePanelsIn() {
         topBlock.alpha = 0f
         topBlock.translationY = -dp(60).toFloat()
-        topBlock.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(500)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-
+        topBlock.animate().alpha(1f).translationY(0f).setDuration(1000)
+            .setInterpolator(DecelerateInterpolator()).start()
         bottomBar.alpha = 0f
         bottomBar.translationY = dp(60).toFloat()
-        bottomBar.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(500)
-            .setStartDelay(120)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+        bottomBar.animate().alpha(1f).translationY(0f).setDuration(1000)
+            .setStartDelay(240).setInterpolator(DecelerateInterpolator()).start()
     }
 
     fun animateNewTabGhost(button: View, onDone: () -> Unit) {
-        val startLoc = IntArray(2)
-        button.getLocationOnScreen(startLoc)
-        val startX = startLoc[0]
-        val startY = startLoc[1]
-        val startW = button.width
-        val startH = button.height
+        val s = IntArray(2); button.getLocationOnScreen(s)
+        val sx = s[0]; val sy = s[1]; val sw = button.width; val sh = button.height
 
         val ghost = TextView(ctx)
         ghost.text = "Новая вкладка"
@@ -190,87 +161,70 @@ class BrowserUI(private val ctx: Context) {
         ghost.alpha = 0.95f
         ghost.elevation = dp(12).toFloat()
 
-        val rootView = button.rootView as ViewGroup
-        val lp = FrameLayout.LayoutParams(startW, startH)
-        lp.leftMargin = startX
-        lp.topMargin = startY
-        rootView.addView(ghost, lp)
+        val rv = button.rootView as ViewGroup
+        val lp = FrameLayout.LayoutParams(sw, sh)
+        lp.leftMargin = sx; lp.topMargin = sy
+        rv.addView(ghost, lp)
 
-        val endLoc = IntArray(2)
-        tabStrip.getLocationOnScreen(endLoc)
-        val endX = endLoc[0] + dp(8)
-        val endY = endLoc[1]
+        val e = IntArray(2); tabStrip.getLocationOnScreen(e)
+        val ex = e[0] + dp(8); val ey = e[1]
 
-        val animX = ValueAnimator.ofInt(startX, endX)
-        animX.duration = 420
-        animX.interpolator = DecelerateInterpolator()
-        animX.addUpdateListener {
-            ghost.translationX = ((it.animatedValue as Int) - startX).toFloat()
-        }
+        val ax = ValueAnimator.ofInt(sx, ex)
+        ax.duration = 840
+        ax.interpolator = DecelerateInterpolator()
+        ax.addUpdateListener { ghost.translationX = ((it.animatedValue as Int) - sx).toFloat() }
 
-        val animY = ValueAnimator.ofInt(startY, endY)
-        animY.duration = 420
-        animY.interpolator = DecelerateInterpolator()
-        animY.addUpdateListener {
-            ghost.translationY = ((it.animatedValue as Int) - startY).toFloat()
-        }
+        val ay = ValueAnimator.ofInt(sy, ey)
+        ay.duration = 840
+        ay.interpolator = DecelerateInterpolator()
+        ay.addUpdateListener { ghost.translationY = ((it.animatedValue as Int) - sy).toFloat() }
 
-        val animW = ValueAnimator.ofInt(startW, dp(140))
-        animW.duration = 420
-        animW.addUpdateListener {
+        val aw = ValueAnimator.ofInt(sw, dp(140))
+        aw.duration = 840
+        aw.addUpdateListener {
             val p = ghost.layoutParams as FrameLayout.LayoutParams
             p.width = it.animatedValue as Int
             ghost.layoutParams = p
         }
 
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
-            .withEndAction {
-                button.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator()).start()
-            }.start()
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(240).withEndAction {
+            button.animate().scaleX(1f).scaleY(1f).setDuration(360)
+                .setInterpolator(OvershootInterpolator()).start()
+        }.start()
 
-        animX.start()
-        animY.start()
-        animW.start()
+        ax.start(); ay.start(); aw.start()
 
-        animX.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                ghost.animate().alpha(0f).setDuration(120).withEndAction {
-                    rootView.removeView(ghost)
-                    onDone()
+        ax.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(a: Animator) {
+                ghost.animate().alpha(0f).setDuration(240).withEndAction {
+                    rv.removeView(ghost); onDone()
                 }.start()
             }
         })
     }
 
     fun pulseButton(button: View, after: () -> Unit) {
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
-            .withEndAction {
-                button.animate().scaleX(1f).scaleY(1f).setDuration(200)
-                    .setInterpolator(OvershootInterpolator()).start()
-            }.start()
-        button.postDelayed({ after() }, 140)
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(240).withEndAction {
+            button.animate().scaleX(1f).scaleY(1f).setDuration(400)
+                .setInterpolator(OvershootInterpolator()).start()
+        }.start()
+        button.postDelayed({ after() }, 280)
     }
 
     fun makeTabPill(isActive: Boolean): LinearLayout {
         val pill = LinearLayout(ctx)
         pill.orientation = LinearLayout.HORIZONTAL
         pill.gravity = Gravity.CENTER_VERTICAL
-        val resId = if (isActive) R.drawable.bg_tab_active else R.drawable.bg_tab_inactive
-        pill.background = ctx.resources.getDrawable(resId, null)
+        val r = if (isActive) R.drawable.bg_tab_active else R.drawable.bg_tab_inactive
+        pill.background = ctx.resources.getDrawable(r, null)
         pill.setPadding(dp(14), dp(8), dp(14), dp(8))
         return pill
     }
 
     fun animatePillIn(pill: View) {
-        pill.alpha = 0f
-        pill.scaleX = 0.7f
-        pill.scaleY = 0.7f
-        pill.animate()
-            .alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(280)
-            .setInterpolator(OvershootInterpolator())
-            .start()
+        pill.alpha = 0f; pill.scaleX = 0.7f; pill.scaleY = 0.7f
+        pill.animate().alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(560).setInterpolator(OvershootInterpolator()).start()
     }
 
     fun dp(v: Int): Int = (v * ctx.resources.displayMetrics.density).toInt()
@@ -291,16 +245,12 @@ class BrowserUI(private val ctx: Context) {
         return tv
     }
 
-    private fun gradientGlass(radiusDp: Int): GradientDrawable {
+    private fun gradientGlass(r: Int): GradientDrawable {
         val g = GradientDrawable(
             GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                Color.parseColor("#66FFFFFF"),
-                Color.parseColor("#33FFFFFF"),
-                Color.parseColor("#22FFFFFF")
-            )
+            intArrayOf(Color.parseColor("#66FFFFFF"), Color.parseColor("#33FFFFFF"), Color.parseColor("#22FFFFFF"))
         )
-        g.cornerRadius = dp(radiusDp).toFloat()
+        g.cornerRadius = dp(r).toFloat()
         g.setStroke(dp(1), Color.parseColor("#66FFFFFF"))
         return g
     }
