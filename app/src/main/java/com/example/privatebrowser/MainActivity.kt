@@ -107,6 +107,7 @@ class MainActivity : AppCompatActivity() {
             if (!has) { addTab(u, false); opened++ }
         }
         if (opened == 0) addTab(home, false)
+        ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -164,6 +165,7 @@ class MainActivity : AppCompatActivity() {
         switchToTab(tab.id, animate)
         wv.loadUrl(url)
         renderTabStrip()
+        ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
     }
 
     private fun requestDownload(url: String, ua: String?, cd: String?, mt: String?) {
@@ -191,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         for (t in tabs) {
             if (t.id == id) {
                 t.webView.visibility = View.VISIBLE
-                if (animate) { t.webView.alpha = 0f; t.webView.animate().alpha(1f).setDuration(440).start() }
+                if (animate) { t.webView.alpha = 0f; t.webView.animate().alpha(1f).setDuration(660).start() }
             } else t.webView.visibility = View.GONE
         }
         val t = activeTab
@@ -318,7 +320,7 @@ class MainActivity : AppCompatActivity() {
                 4 -> activeTab?.webView?.loadUrl(home)
                 5 -> addTab(home, true)
                 6 -> confirmCloseAll()
-                7 -> AlertDialog.Builder(this).setTitle("Приватный браузер").setMessage("Версия 1.3").setPositiveButton("OK", null).show()
+                7 -> AlertDialog.Builder(this).setTitle("Приватный браузер").setMessage("Версия 1.4").setPositiveButton("OK", null).show()
             }
         }.create()
         animateDialog(dlg); dlg.show()
@@ -329,7 +331,7 @@ class MainActivity : AppCompatActivity() {
             val dv = dlg.window?.decorView
             if (dv != null) {
                 dv.alpha = 0f; dv.scaleX = 0.6f; dv.scaleY = 0.6f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(520).setInterpolator(OvershootInterpolator()).start()
+                dv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(780).setInterpolator(OvershootInterpolator()).start()
             }
         }
     }
