@@ -86,7 +86,6 @@ class MainActivity : AppCompatActivity() {
             fitsSystemWindows = true
         }
 
-        // ---------- ВЕРХНЯЯ ПАНЕЛЬ ----------
         val topBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(8))
@@ -152,11 +151,9 @@ class MainActivity : AppCompatActivity() {
 
         root.addView(topBlock, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        // ---------- WEBVIEW ----------
         webContainer = FrameLayout(this)
         root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        // ---------- НИЖНЯЯ ПАНЕЛЬ ----------
         bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -166,7 +163,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tabsBtn = textNavButton("☰") { showTabsDialog() }
-        // Долгое нажатие на ☰ — быстрое закрытие всех вкладок
         tabsBtn.setOnLongClickListener {
             confirmCloseAll()
             true
@@ -201,7 +197,6 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(root)
 
-        // ---------- Анимация появления верхней панели ----------
         topBlock.alpha = 0f
         topBlock.translationY = -dp(60).toFloat()
         topBlock.animate()
@@ -211,7 +206,6 @@ class MainActivity : AppCompatActivity() {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        // ---------- Анимация появления нижней панели ----------
         bottomBar.alpha = 0f
         bottomBar.translationY = dp(60).toFloat()
         bottomBar.animate()
@@ -232,28 +226,13 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // ================== ЗАКРЫТИЕ ВСЕХ ВКЛАДОК ==================
-
-    /** Закрыть все вкладки и открыть одну пустую (Google) */
     private fun closeAllTabs() {
-        if (tabs.size <= 1 && tabs.firstOrNull()?.url == home) {
-            // Если одна вкладка и она на домашней — просто перезагрузить
-            tabs.firstOrNull()?.webView?.loadUrl(home)
-            Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        // Уничтожаем все WebView
         tabs.forEach { tab ->
             webContainer.removeView(tab.webView)
             tab.webView.destroy()
         }
         tabs.clear()
-
-        // Создаём одну новую
         addTab(home, animate = true)
-
-        // Анимируем ленту — она "схлопывается"
         tabStrip.animate()
             .alpha(0.4f)
             .setDuration(120)
@@ -262,11 +241,9 @@ class MainActivity : AppCompatActivity() {
                 tabStrip.animate().alpha(1f).setDuration(200).start()
             }
             .start()
-
         Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
     }
 
-    /** Диалог подтверждения перед закрытием всех вкладок */
     private fun confirmCloseAll() {
         AlertDialog.Builder(this)
             .setTitle("Закрыть все вкладки?")
@@ -275,8 +252,6 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton("Отмена", null)
             .show()
     }
-
-    // ================== АНИМАЦИИ ==================
 
     private fun animateNewTabFromButton(button: View) {
         val startX = IntArray(2).also { button.getLocationOnScreen(it) }[0]
@@ -349,8 +324,6 @@ class MainActivity : AppCompatActivity() {
             }.start()
         button.postDelayed({ show() }, 140)
     }
-
-    // ================== ВКЛАДКИ ==================
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun addTab(initialUrl: String, animate: Boolean = true) {
@@ -513,4 +486,35 @@ class MainActivity : AppCompatActivity() {
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
                 marginEnd = dp(8)
             }
-  
+            tabStrip.addView(pill, lp)
+
+            pill.alpha = 0f
+            pill.scaleX = 0.7f
+            pill.scaleY = 0.7f
+            pill.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(280)
+                .setInterpolator(OvershootInterpolator())
+                .start()
+        }
+
+        tabsCountBadge.text = tabs.size.toString()
+
+        tabStripWrap.post {
+            tabStripWrap.smoothScrollTo(tabStrip.width, 0)
+        }
+    }
+
+    private fun showTabsDialog() {
+        val titles = tabs.map {
+            (if (it.id == activeTabId) "● " else "   ") + it.title
+        }.toTypedArray()
+
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Вкладки (${tabs.size})")
+            .setItems(titles) { _, which ->
+                switchToTab(tabs[which].id)
+            }
+            .setPositiveButton("Новая вкладка") { _, _ -> animateNewTabFromButton(bottomBar) }
+            .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
+            .setNegativeButton("Отмена", n
