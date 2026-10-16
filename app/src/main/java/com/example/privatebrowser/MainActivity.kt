@@ -42,12 +42,6 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
 
-class BrowserTab(val id: Int) {
-    lateinit var webView: WebView
-    var url: String = ""
-    var title: String = "Новая вкладка"
-}
-
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webContainer: FrameLayout
@@ -549,4 +543,117 @@ class MainActivity : AppCompatActivity() {
         tabStripWrap.post {
             tabStripWrap.smoothScrollTo(tabStrip.width, 0)
         }
-        
+    }
+
+    private fun showTabMenu(tab: BrowserTab) {
+        val items = arrayOf(              
+            "Копировать название",
+            "Копировать адрес",
+            "Закрыть вкладку",
+            "Закрыть все вкладки"
+        )
+        AlertDialog.Builder(this)
+            .setTitle(tab.title)
+            .setItems(items) { _, which ->
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                if (which == 0) {
+                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
+                    Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show()
+                } else if (which == 1) {
+                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
+                    Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show()
+                } else if (which == 2) {
+                    closeTab(tab.id)
+                } else if (which == 3) {
+                    confirmCloseAll()
+                }
+            }
+            .show()
+    }
+
+    private fun showTabsDialog() {
+        val titles = ArrayList<String>()
+        for (tab in tabs) {
+            val prefix = if (tab.id == activeTabId) "● " else "   "
+            titles.add(prefix + tab.title)
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Вкладки (" + tabs.size + ")")
+            .setItems(titles.toTypedArray()) { _, which ->
+                switchToTab(tabs[which].id, true)
+            }
+            .setPositiveButton("Новая вкладка") { _, _ -> addTab(home, true) }
+            .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // ---------- settings ----------
+
+    private fun showSettingsDialog() {
+        val engine = if (searchUrl == googleUrl) "Google" else "DuckDuckGo"
+        val items = arrayOf(
+            "Стереть куки и кеш",
+            "Закрыть все вкладки",
+            "Поисковик: " + engine + " (сменить)",
+            "О браузере"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Настройки")
+            .setItems(items) { _, which ->
+                if (which == 0) {
+                    wipeAll()
+                    Toast.makeText(this, "Данные стёрты", Toast.LENGTH_SHORT).show()
+                } else if (which == 1) {
+                    confirmCloseAll()
+                } else if (which == 2) {
+                    if (searchUrl == googleUrl) searchUrl = duckUrl else searchUrl = googleUrl
+                    val now = if (searchUrl == googleUrl) "Google" else "DuckDuckGo"
+                    Toast.makeText(this, "Поисковик: " + now, Toast.LENGTH_SHORT).show()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Приватный браузер")
+                        .setMessage(
+                            "Движок Chromium (Android WebView). История, кеш и куки " +
+                                "стираются при закрытии. Скриншоты запрещены, " +
+                                "популярные трекеры блокируются, http переводится на https."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    // ---------- navigation and cleanup ----------
+
+    private fun open(input: String) {
+        val t = input.trim()
+        if (t.isEmpty()) return
+        val target: String
+        if (t.startsWith("https://")) {
+            target = t
+        } else if (t.startsWith("http://")) {
+            target = "https://" + t.removePrefix("http://")
+        } else if (!t.contains(" ") && t.contains(".")) {
+            target = "https://" + t
+        } else {
+            target = searchUrl + android.net.Uri.encode(t)
+        }
+        urlBox.clearFocus()
+        val tab = activeTab
+        if (tab != null) tab.webView.loadUrl(target)
+    }
+
+    private fun wipeAll() {
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        WebStorage.getInstance().deleteAllData()
+        for (t in tabs) {
+            t.webView.clearCache(true)
+            t.webView.clearHistory()
+        }
+    }
+}
