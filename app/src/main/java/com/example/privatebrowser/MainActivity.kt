@@ -1,6 +1,9 @@
 package com.example.privatebrowser
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -42,14 +45,13 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bar: ProgressBar
     private lateinit var tabsCountBadge: TextView
     private lateinit var backBtn: ImageButton
-    private lateinit var forwardBtn: ImageButton
 
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
     private var nextTabId = 1
 
     private val searchUrl = "https://duckduckgo.com/?q="
-    private val home = "https://duckduckgo.com"
+    private val home = "https://www.google.com"
 
     private val blockedHosts = listOf(
         "doubleclick.net", "googlesyndication.com", "google-analytics.com",
@@ -72,16 +74,18 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        val root = FrameLayout(this).apply {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.parseColor("#0B0F1A"))
+            fitsSystemWindows = true
         }
 
-        webContainer = FrameLayout(this)
-        root.addView(webContainer, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-
+        // ---------- ВЕРХНЯЯ ПАНЕЛЬ ----------
         val topBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(28), dp(10), dp(6))
+            setPadding(dp(10), dp(10), dp(10), dp(8))
+            background = gradientGlass(dp(0))
+            elevation = dp(8).toFloat()
         }
 
         val urlRow = LinearLayout(this).apply {
@@ -89,7 +93,7 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER_VERTICAL
             background = gradientGlass(dp(26))
             setPadding(dp(6), dp(6), dp(6), dp(6))
-            elevation = dp(10).toFloat()
+            elevation = dp(6).toFloat()
         }
 
         val homeBtn = ImageButton(this).apply {
@@ -101,7 +105,7 @@ class MainActivity : AppCompatActivity() {
         urlRow.addView(homeBtn, LinearLayout.LayoutParams(dp(40), dp(40)))
 
         urlBox = EditText(this).apply {
-            hint = "Поиск или адрес"
+            hint = "Поиск в DuckDuckGo или адрес"
             setHintTextColor(Color.parseColor("#CCFFFFFF"))
             setTextColor(Color.WHITE)
             textSize = 15f
@@ -116,11 +120,9 @@ class MainActivity : AppCompatActivity() {
                 } else false
             }
         }
-        urlBox.isLongClickable = true
         urlBox.setOnLongClickListener {
-            val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                as android.content.ClipboardManager
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("url", urlBox.text.toString()))
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("url", urlBox.text.toString()))
             Toast.makeText(this@MainActivity, "Скопировано", Toast.LENGTH_SHORT).show()
             true
         }
@@ -164,21 +166,23 @@ class MainActivity : AppCompatActivity() {
         tabStripWrap.addView(tabStrip)
         topBlock.addView(tabStripWrap, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        root.addView(topBlock, FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+        root.addView(topBlock, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
+        // ---------- WEBVIEW ----------
+        webContainer = FrameLayout(this)
+        root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+
+        // ---------- НИЖНЯЯ ПАНЕЛЬ (3 кнопки по центру) ----------
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = gradientGlass(dp(34))
-            elevation = dp(14).toFloat()
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            background = gradientGlass(dp(0))
+            elevation = dp(10).toFloat()
         }
 
         backBtn = navButton(R.drawable.ic_back) {
             activeTab?.webView?.let { if (it.canGoBack()) it.goBack() }
-        }
-        forwardBtn = navButton(R.drawable.ic_forward) {
-            activeTab?.webView?.let { if (it.canGoForward()) it.goForward() }
         }
 
         val tabsBtn = navButton(R.drawable.ic_tabs) { showTabsDialog() }
@@ -198,20 +202,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.TOP or Gravity.END
         })
 
-        val newTabBtn = navButton(R.drawable.ic_plus) { addTab(home) }
         val settingsBtn = navButton(R.drawable.ic_settings) { showSettingsDialog() }
 
         bottomBar.addView(backBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(forwardBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
         bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
 
-        val bottomParams = FrameLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
-            gravity = Gravity.BOTTOM
-            setMargins(dp(16), 0, dp(16), dp(20))
-        }
-        root.addView(bottomBar, bottomParams)
+        root.addView(bottomBar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
         setContentView(root)
 
@@ -345,9 +344,8 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(14), dp(8), dp(6), dp(8))
                 setOnClickListener { switchToTab(tab.id) }
                 setOnLongClickListener {
-                    val cm = getSystemService(android.content.Context.CLIPBOARD_SERVICE)
-                        as android.content.ClipboardManager
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("tab", tab.title))
+                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("tab", tab.title))
                     Toast.makeText(this@MainActivity, "Название скопировано", Toast.LENGTH_SHORT).show()
                     true
                 }
@@ -383,7 +381,6 @@ class MainActivity : AppCompatActivity() {
     private fun updateNavButtons() {
         val t = activeTab ?: return
         backBtn.alpha = if (t.webView.canGoBack()) 1f else 0.35f
-        forwardBtn.alpha = if (t.webView.canGoForward()) 1f else 0.35f
     }
 
     private fun showTabsDialog() {
@@ -406,7 +403,8 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Настройки")
             .setItems(arrayOf(
                 "Очистить кэш и cookies",
-                "Открыть домашнюю",
+                "Открыть домашнюю (Google)",
+                "Новая вкладка",
                 "О приложении"
             )) { _, which ->
                 when (which) {
@@ -415,9 +413,10 @@ class MainActivity : AppCompatActivity() {
                         Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show()
                     }
                     1 -> activeTab?.webView?.loadUrl(home)
-                    2 -> AlertDialog.Builder(this)
+                    2 -> addTab(home)
+                    3 -> AlertDialog.Builder(this)
                         .setTitle("Приватный браузер")
-                        .setMessage("Версия 1.0\nБез трекеров, без истории, без рекламы.")
+                        .setMessage("Версия 1.0\nПоиск: DuckDuckGo\nДомашняя: Google\nБез трекеров, без истории, без рекламы.")
                         .setPositiveButton("OK", null)
                         .show()
                 }
