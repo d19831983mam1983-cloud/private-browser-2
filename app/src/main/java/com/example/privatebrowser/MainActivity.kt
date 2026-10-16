@@ -1,19 +1,23 @@
 package com.example.privatebrowser
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.WindowManager
 import android.view.animation.OvershootInterpolator
 import android.webkit.CookieManager
+import android.webkit.URLUtil
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -79,10 +83,8 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show()
         }
 
-        val root = ui.build()
-        setContentView(root)
+        setContentView(ui.build())
         ui.animatePanelsIn()
-
         restoreSession()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -106,8 +108,7 @@ class MainActivity : AppCompatActivity() {
     private fun restoreSession() {
         val saved = storage.loadSession()
         var opened = 0
-        for (i in saved.urls.indices) {
-            val u = saved.urls[i]
+        for (u in saved.urls) {
             if (u.isNotBlank()) {
                 addTab(u, false)
                 opened++
@@ -127,7 +128,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     private fun addTab(initialUrl: String, animate: Boolean) {
         val id = nextTabId
-        nextTabId = nextTabId + 1
+        nextTabId++
         val tab = BrowserTab(id)
 
         val wv = WebView(this)
@@ -142,11 +143,11 @@ class MainActivity : AppCompatActivity() {
         wv.settings.saveFormData = false
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
         wv.visibility = View.GONE
+        setupDownloadListener(wv)
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-                val scheme = r.url.scheme
-                if (scheme == null) return true
+                val scheme = r.url.scheme ?: return true
                 if (scheme == "http") {
                     v.loadUrl(r.url.buildUpon().scheme("https").build().toString())
                     return true
@@ -186,7 +187,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(v: WebView, p: Int) {
                 if (tab.id != activeTabId) return
                 ui.bar.progress = p
-                if (p in 1..99) ui.bar.visibility = View.VISIBLE else ui.bar.visibility = View.GONE
+                ui.bar.visibility = if (p in 1..99) View.VISIBLE else View.GONE
             }
 
             override fun onReceivedTitle(v: WebView?, title: String?) {
@@ -204,6 +205,42 @@ class MainActivity : AppCompatActivity() {
         switchToTab(tab.id, animate)
         wv.loadUrl(initialUrl)
         renderTabStrip()
+    }
+
+    private fun setupDownloadListener(wv: WebView) {
+        wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            requestDownload(url, userAgent, contentDisposition, mimeType)
+        }
+    }
+
+    private fun requestDownload(
+        url: String,
+        userAgent: String?,
+        contentDisposition: String?,
+        mimeType: String?
+    ) {
+        try {
+            val request = DownloadManager.Request(Uri.parse(url))
+            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
+            request.setMimeType(mimeType)
+            if (userAgent != null) request.addRequestHeader("User-Agent", userAgent)
+            val cookie = CookieManager.getInstance().getCookie(url)
+            if (cookie != null) request.addRequestHeader("Cookie", cookie)
+            request.setTitle(fileName)
+            request.setDescription("Скачивание...")
+            request.allowScanningByMediaScanner()
+            request.setNotificationVisibility(
+                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
+            )
+            request.setDestinationInExternalPublicDir(
+                Environment.DIRECTORY_DOWNLOADS, fileName
+            )
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            dm.enqueue(request)
+            Toast.makeText(this, "Скачивание: " + fileName, Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Ошибка: " + e.message, Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun switchToTab(id: Int, animate: Boolean) {
@@ -231,7 +268,6 @@ class MainActivity : AppCompatActivity() {
         ui.webContainer.removeView(target.webView)
         target.webView.destroy()
         tabs.remove(target)
-
         if (tabs.isEmpty()) {
             addTab(home, false)
             return
@@ -268,14 +304,10 @@ class MainActivity : AppCompatActivity() {
 
             val pill = ui.makeTabPill(isActive)
             pill.setOnClickListener { switchToTab(tab.id, true) }
-            pill.setOnLongClickListener {
-                showTabMenu(tab)
-                true
-            }
+            pill.setOnLongClickListener { showTabMenu(tab); true }
 
             val titleView = TextView(this)
-            var prefix = ""
-            if (isPinned) prefix = "[P] "
+            val prefix = if (isPinned) "[P] " else ""
             var title = tab.title
             if (title.length > 16) title = title.substring(0, 16) + "..."
             titleView.text = prefix + title
@@ -290,21 +322,15 @@ class MainActivity : AppCompatActivity() {
             )
             lp.marginEnd = ui.dp(8)
             ui.tabStrip.addView(pill, lp)
-
             ui.animatePillIn(pill)
         }
-
         ui.tabsCountBadge.text = tabs.size.toString()
-
-        ui.tabStripWrap.post {
-            ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0)
-        }
+        ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
     }
 
     private fun showTabMenu(tab: BrowserTab) {
         val isPinned = storage.isPinned(tab.url)
         val pinLabel = if (isPinned) "Открепить вкладку" else "Закрепить вкладку"
-
         val items = arrayOf(
             pinLabel,
             "Копировать название",
@@ -347,7 +373,6 @@ class MainActivity : AppCompatActivity() {
             val pinMark = if (storage.isPinned(tab.url)) "[P] " else ""
             titles.add(prefix + pinMark + tab.title)
         }
-
         val dlg = AlertDialog.Builder(this)
             .setTitle("Вкладки (" + tabs.size + ")")
             .setItems(titles.toTypedArray()) { _, which ->
@@ -359,18 +384,7 @@ class MainActivity : AppCompatActivity() {
             .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
             .setNegativeButton("Отмена", null)
             .create()
-        dlg.setOnShowListener {
-            val dv = dlg.window?.decorView
-            if (dv != null) {
-                dv.alpha = 0f
-                dv.scaleX = 0.6f
-                dv.scaleY = 0.6f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(260)
-                    .setInterpolator(OvershootInterpolator())
-                    .start()
-            }
-        }
+        animateDialog(dlg)
         dlg.show()
     }
 
@@ -392,24 +406,14 @@ class MainActivity : AppCompatActivity() {
             }
             .setNegativeButton("Отмена", null)
             .create()
-        dlg.setOnShowListener {
-            val dv = dlg.window?.decorView
-            if (dv != null) {
-                dv.alpha = 0f
-                dv.scaleX = 0.6f
-                dv.scaleY = 0.6f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(260)
-                    .setInterpolator(OvershootInterpolator())
-                    .start()
-            }
-        }
+        animateDialog(dlg)
         dlg.show()
     }
 
     private fun showSettingsDialog() {
         val items = arrayOf(
             "История поиска",
+            "Загрузки",
             "Очистить кэш и cookies",
             "Очистить историю поиска",
             "Открыть домашнюю (Google)",
@@ -423,27 +427,34 @@ class MainActivity : AppCompatActivity() {
                 if (which == 0) {
                     showHistoryDialog()
                 } else if (which == 1) {
+                    openDownloadsFolder()
+                } else if (which == 2) {
                     wipeAll()
                     Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show()
-                } else if (which == 2) {
+                } else if (which == 3) {
                     storage.clearHistory()
                     Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
-                } else if (which == 3) {
+                } else if (which == 4) {
                     val t = activeTab
                     if (t != null) t.webView.loadUrl(home)
-                } else if (which == 4) {
-                    addTab(home, true)
                 } else if (which == 5) {
-                    confirmCloseAll()
+                    addTab(home, true)
                 } else if (which == 6) {
+                    confirmCloseAll()
+                } else if (which == 7) {
                     AlertDialog.Builder(this)
                         .setTitle("Приватный браузер")
-                        .setMessage("Версия 1.1")
+                        .setMessage("Версия 1.2\nСкачивание файлов.")
                         .setPositiveButton("OK", null)
                         .show()
                 }
             }
             .create()
+        animateDialog(dlg)
+        dlg.show()
+    }
+
+    private fun animateDialog(dlg: AlertDialog) {
         dlg.setOnShowListener {
             val dv = dlg.window?.decorView
             if (dv != null) {
@@ -456,7 +467,14 @@ class MainActivity : AppCompatActivity() {
                     .start()
             }
         }
-        dlg.show()
+    }
+
+    private fun openDownloadsFolder() {
+        try {
+            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Не удалось открыть загрузки", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -481,7 +499,7 @@ class MainActivity : AppCompatActivity() {
         } else if (!t.contains(" ") && t.contains(".")) {
             target = "https://" + t
         } else {
-            target = searchUrl + android.net.Uri.encode(t)
+            target = searchUrl + Uri.encode(t)
         }
         storage.addHistory(t)
         ui.urlBox.clearFocus()
