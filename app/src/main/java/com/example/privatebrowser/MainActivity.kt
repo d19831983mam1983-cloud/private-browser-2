@@ -1,8 +1,5 @@
 package com.example.privatebrowser
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -10,19 +7,12 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
-import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
-import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -31,42 +21,24 @@ import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.EditText
-import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
-import androidx.webkit.ProxyConfig
-import androidx.webkit.ProxyController
-import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var webContainer: FrameLayout
-    private lateinit var tabStrip: LinearLayout
-    private lateinit var tabStripWrap: HorizontalScrollView
-    private lateinit var urlBox: EditText
-    private lateinit var bar: ProgressBar
-    private lateinit var tabsCountBadge: TextView
-    private lateinit var bottomBar: LinearLayout
+    private lateinit var ui: BrowserUI
+    private lateinit var storage: BrowserStorage
 
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
     private var nextTabId = 1
-    private val doh = DohProxy()
-    private val store: Store by lazy { Store(applicationContext) }
-    private val animatedIds = HashSet<Int>()
 
-    private val duckUrl = "https://duckduckgo.com/?q="
-    private val googleUrl = "https://www.google.com/search?q="
-    private var searchUrl = "https://duckduckgo.com/?q="
+    private val searchUrl = "https://duckduckgo.com/?q="
     private val home = "https://www.google.com"
 
     private val blockedHosts = listOf(
@@ -83,52 +55,11 @@ class MainActivity : AppCompatActivity() {
             return null
         }
 
-    // ---------- helpers ----------
-
-    private fun dp(v: Int): Int {
-        return (v * resources.displayMetrics.density).toInt()
-    }
-
-    private fun gradientGlass(radius: Int): GradientDrawable {
-        val g = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.parseColor("#26FFFFFF"), Color.parseColor("#12FFFFFF"))
-        )
-        g.cornerRadius = radius.toFloat()
-        g.setStroke(dp(1), Color.parseColor("#33FFFFFF"))
-        return g
-    }
-
-    private fun textNavButton(label: String): TextView {
-        val b = TextView(this)
-        b.text = label
-        b.setTextColor(Color.WHITE)
-        b.textSize = 20f
-        b.gravity = Gravity.CENTER
-        b.background = gradientGlass(dp(28))
-        b.isClickable = true
-        b.isFocusable = true
-        return b
-    }
-
-    @SuppressLint("ClickableViewAccessibility")
-    private fun pressFx(v: View) {
-        v.setOnTouchListener { view, ev ->
-            if (ev.action == MotionEvent.ACTION_DOWN) {
-                view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(80).start()
-            } else if (ev.action == MotionEvent.ACTION_UP || ev.action == MotionEvent.ACTION_CANCEL) {
-                view.animate().scaleX(1f).scaleY(1f).setDuration(160)
-                    .setInterpolator(OvershootInterpolator()).start()
-            }
-            false
-        }
-    }
-
-    // ---------- lifecycle ----------
-
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        storage = BrowserStorage(this)
+
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE
@@ -136,161 +67,23 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        val root = LinearLayout(this)
-        root.orientation = LinearLayout.VERTICAL
-        root.setBackgroundColor(Color.parseColor("#0B0F1A"))
-        root.fitsSystemWindows = true
-
-        val topBlock = LinearLayout(this)
-        topBlock.orientation = LinearLayout.VERTICAL
-        topBlock.setPadding(dp(10), dp(10), dp(10), dp(8))
-        topBlock.background = gradientGlass(dp(0))
-        topBlock.elevation = dp(8).toFloat()
-
-        val urlRow = LinearLayout(this)
-        urlRow.orientation = LinearLayout.HORIZONTAL
-        urlRow.gravity = Gravity.CENTER_VERTICAL
-        urlRow.background = gradientGlass(dp(26))
-        urlRow.setPadding(dp(6), dp(6), dp(6), dp(6))
-        urlRow.elevation = dp(6).toFloat()
-
-        urlBox = EditText(this)
-        urlBox.hint = "Поиск или адрес"
-        urlBox.setHintTextColor(Color.parseColor("#CCFFFFFF"))
-        urlBox.setTextColor(Color.WHITE)
-        urlBox.textSize = 15f
-        urlBox.setSingleLine()
-        urlBox.setPadding(dp(14), dp(10), dp(14), dp(10))
-        urlBox.background = gradientGlass(dp(22))
-        urlBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-        urlBox.imeOptions = EditorInfo.IME_ACTION_GO
-        urlBox.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_GO) {
-                open(urlBox.text.toString())
-                true
-            } else false
-        }
-        urlBox.setOnLongClickListener {
+        ui = BrowserUI(this)
+        ui.onOpen = { open(it) }
+        ui.onTabsDialog = { showTabsDialog() }
+        ui.onConfirmCloseAll = { confirmCloseAll() }
+        ui.onNewTab = { v -> ui.animateNewTabGhost(v) { addTab(home, true) } }
+        ui.onSettings = { v -> ui.pulseButton(v) { showSettingsDialog() } }
+        ui.onUrlLongPress = { text ->
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("url", urlBox.text.toString()))
-            Toast.makeText(this@MainActivity, "Скопировано", Toast.LENGTH_SHORT).show()
-            true
-        }
-        urlRow.addView(urlBox, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-
-        topBlock.addView(urlRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
-        bar.max = 100
-        bar.visibility = View.GONE
-        bar.progressTintList = android.content.res.ColorStateList.valueOf(
-            Color.parseColor("#5B8DEF")
-        )
-        topBlock.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, dp(2)))
-
-        tabStripWrap = HorizontalScrollView(this)
-        tabStripWrap.isHorizontalScrollBarEnabled = false
-        tabStripWrap.setPadding(0, dp(8), 0, 0)
-
-        tabStrip = LinearLayout(this)
-        tabStrip.orientation = LinearLayout.HORIZONTAL
-        tabStrip.gravity = Gravity.CENTER_VERTICAL
-        tabStripWrap.addView(tabStrip)
-        topBlock.addView(tabStripWrap, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        root.addView(topBlock, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
-        webContainer = FrameLayout(this)
-        root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
-
-        bottomBar = LinearLayout(this)
-        bottomBar.orientation = LinearLayout.HORIZONTAL
-        bottomBar.gravity = Gravity.CENTER
-        bottomBar.setPadding(dp(16), dp(10), dp(16), dp(10))
-        bottomBar.background = gradientGlass(dp(0))
-        bottomBar.elevation = dp(10).toFloat()
-
-        val tabsBtn = textNavButton("[=]")
-        tabsBtn.setOnClickListener { showTabsDialog() }
-        tabsBtn.setOnLongClickListener {
-            confirmCloseAll()
-            true
+            cm.setPrimaryClip(ClipData.newPlainText("url", text))
+            Toast.makeText(this, "Скопировано", Toast.LENGTH_SHORT).show()
         }
 
-        val tabsWrapper = FrameLayout(this)
-        tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
-        tabsCountBadge = TextView(this)
-        tabsCountBadge.setTextColor(Color.WHITE)
-        tabsCountBadge.textSize = 10f
-        tabsCountBadge.gravity = Gravity.CENTER
-        val badgeBg = GradientDrawable()
-        badgeBg.shape = GradientDrawable.OVAL
-        badgeBg.setColor(Color.parseColor("#5B8DEF"))
-        tabsCountBadge.background = badgeBg
-        val badgeLp = FrameLayout.LayoutParams(dp(20), dp(20))
-        badgeLp.gravity = Gravity.TOP or Gravity.END
-        tabsWrapper.addView(tabsCountBadge, badgeLp)
-
-        val newTabBtn = textNavButton("+")
-        newTabBtn.setOnClickListener { animateNewTabFromButton(it) }
-
-        val refreshBtn = textNavButton("↻")
-        refreshBtn.setOnClickListener {
-            val t = activeTab
-            if (t != null) {
-                if (t.webView.url == null) t.webView.loadUrl(t.url) else t.webView.reload()
-                it.animate().rotationBy(360f).setDuration(450)
-                    .setInterpolator(DecelerateInterpolator()).start()
-            }
-        }
-
-        val settingsBtn = textNavButton("*")
-        settingsBtn.setOnClickListener { animateDialogFromButton(it) { showSettingsDialog() } }
-
-        pressFx(tabsBtn)
-        pressFx(newTabBtn)
-        pressFx(refreshBtn)
-        pressFx(settingsBtn)
-
-        bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
-        bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
-        bottomBar.addView(refreshBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
-        bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-
-        root.addView(bottomBar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-
+        val root = ui.build()
         setContentView(root)
+        ui.animatePanelsIn()
 
-        topBlock.alpha = 0f
-        topBlock.translationY = -dp(60).toFloat()
-        topBlock.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(500)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-
-        bottomBar.alpha = 0f
-        bottomBar.translationY = dp(60).toFloat()
-        bottomBar.animate()
-            .alpha(1f)
-            .translationY(0f)
-            .setDuration(500)
-            .setStartDelay(120)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
-
-        // Чистим остатки прошлой сессии, если приложение было убито системой
-        wipeAll()
-
-        val startUrl = intent?.dataString
-        startWithDns {
-            restorePinned()
-            if (startUrl != null) addTab(startUrl, false) else addTab(home, false)
-        }
+        restoreSession()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -300,142 +93,42 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        val data = intent.dataString
-        if (data != null) addTab(data, true)
-    }
-
-    override fun onPause() {
-        savePinned()
-        super.onPause()
-    }
-
-    override fun onDestroy() {
-        wipeAll()
-        doh.stop()
+    private fun saveSession() {
+        val urls = ArrayList<String>()
+        val titles = ArrayList<String>()
         for (t in tabs) {
-            webContainer.removeView(t.webView)
-            t.webView.destroy()
+            urls.add(t.url)
+            titles.add(t.title)
         }
-        tabs.clear()
-        super.onDestroy()
+        storage.saveSession(urls, titles)
     }
 
-    // ---------- DNS (AdGuard / Comss.one через локальный прокси) ----------
-
-    private fun startWithDns(onReady: () -> Unit) {
-        var started = false
-        try {
-            val port = doh.start()
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
-                val cfg = ProxyConfig.Builder().addProxyRule("127.0.0.1:" + port).build()
-                ProxyController.getInstance().setProxyOverride(
-                    cfg,
-                    ContextCompat.getMainExecutor(this),
-                    Runnable { onReady() }
-                )
-                started = true
+    private fun restoreSession() {
+        val saved = storage.loadSession()
+        var opened = 0
+        for (i in saved.urls.indices) {
+            val u = saved.urls[i]
+            if (u.isNotBlank()) {
+                addTab(u, false)
+                opened++
             }
-        } catch (e: Exception) {
-            started = false
         }
-        if (!started) {
-            Toast.makeText(
-                this,
-                "DNS-защита недоступна: обновите Android System WebView",
-                Toast.LENGTH_LONG
-            ).show()
-            onReady()
-        }
-    }
-
-    // ---------- animations ----------
-
-    private fun animateNewTabFromButton(button: View) {
-        val startLoc = IntArray(2)
-        button.getLocationOnScreen(startLoc)
-        val startX = startLoc[0]
-        val startY = startLoc[1]
-        val startW = button.width
-        val startH = button.height
-
-        val ghost = TextView(this)
-        ghost.text = "Новая вкладка"
-        ghost.setTextColor(Color.WHITE)
-        ghost.textSize = 13f
-        ghost.gravity = Gravity.CENTER_VERTICAL
-        ghost.setPadding(dp(14), 0, dp(14), 0)
-        ghost.background = resources.getDrawable(R.drawable.bg_tab_active, theme)
-        ghost.alpha = 0.95f
-        ghost.elevation = dp(12).toFloat()
-
-        val rootView = window.decorView as ViewGroup
-        val lp = FrameLayout.LayoutParams(startW, startH)
-        lp.leftMargin = startX
-        lp.topMargin = startY
-        rootView.addView(ghost, lp)
-
-        val endLoc = IntArray(2)
-        tabStrip.getLocationOnScreen(endLoc)
-        val endX = endLoc[0] + dp(8)
-        val endY = endLoc[1]
-
-        val animX = ValueAnimator.ofInt(startX, endX)
-        animX.duration = 420
-        animX.interpolator = DecelerateInterpolator()
-        animX.addUpdateListener {
-            ghost.translationX = ((it.animatedValue as Int) - startX).toFloat()
-        }
-
-        val animY = ValueAnimator.ofInt(startY, endY)
-        animY.duration = 420
-        animY.interpolator = DecelerateInterpolator()
-        animY.addUpdateListener {
-            ghost.translationY = ((it.animatedValue as Int) - startY).toFloat()
-        }
-
-        val animW = ValueAnimator.ofInt(startW, dp(140))
-        animW.duration = 420
-        animW.addUpdateListener {
-            val p = ghost.layoutParams as FrameLayout.LayoutParams
-            p.width = it.animatedValue as Int
-            ghost.layoutParams = p
-        }
-
-        animX.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                ghost.animate().alpha(0f).setDuration(120).withEndAction {
-                    rootView.removeView(ghost)
-                }.start()
-                addTab(home, true)
+        for (u in storage.getPinned()) {
+            var already = false
+            for (t in tabs) if (t.url == u) already = true
+            if (!already) {
+                addTab(u, false)
+                opened++
             }
-        })
-
-        animX.start()
-        animY.start()
-        animW.start()
+        }
+        if (opened == 0) addTab(home, false)
     }
-
-    private fun animateDialogFromButton(button: View, show: () -> Unit) {
-        button.postDelayed({ show() }, 120)
-    }
-
-    // ---------- tabs ----------
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addTab(
-        initialUrl: String,
-        animate: Boolean,
-        pinned: Boolean = false,
-        savedTitle: String = "",
-        activate: Boolean = true
-    ) {
+    private fun addTab(initialUrl: String, animate: Boolean) {
         val id = nextTabId
         nextTabId = nextTabId + 1
         val tab = BrowserTab(id)
-        tab.pinned = pinned
-        if (savedTitle.isNotEmpty()) tab.title = savedTitle
 
         val wv = WebView(this)
         wv.setBackgroundColor(Color.parseColor("#0B0F1A"))
@@ -446,7 +139,6 @@ class MainActivity : AppCompatActivity() {
         wv.settings.allowContentAccess = false
         wv.settings.setGeolocationEnabled(false)
         wv.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-        @Suppress("DEPRECATION")
         wv.settings.saveFormData = false
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
         wv.visibility = View.GONE
@@ -479,34 +171,22 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) {
                 tab.url = url
-                if (tab.id == activeTabId && !urlBox.hasFocus()) urlBox.setText(url)
+                if (tab.id == activeTabId && !ui.urlBox.hasFocus()) ui.urlBox.setText(url)
             }
 
             override fun onPageFinished(v: WebView, url: String) {
                 val title = v.title
                 if (title != null) tab.title = title else tab.title = url
-                if (tab.pinned) savePinned()
                 renderTabStrip()
+                saveSession()
             }
         }
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(v: WebView, p: Int) {
                 if (tab.id != activeTabId) return
-                if (p in 1..99) {
-                    bar.animate().cancel()
-                    bar.alpha = 1f
-                    bar.visibility = View.VISIBLE
-                    bar.setProgress(p, true)
-                } else if (p >= 100) {
-                    bar.setProgress(100, true)
-                    bar.animate().alpha(0f).setDuration(300).setStartDelay(150)
-                        .withEndAction {
-                            bar.visibility = View.GONE
-                            bar.alpha = 1f
-                            bar.progress = 0
-                        }.start()
-                }
+                ui.bar.progress = p
+                if (p in 1..99) ui.bar.visibility = View.VISIBLE else ui.bar.visibility = View.GONE
             }
 
             override fun onReceivedTitle(v: WebView?, title: String?) {
@@ -518,16 +198,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         tab.webView = wv
-        tab.url = initialUrl
         tabs.add(tab)
-        webContainer.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
+        ui.webContainer.addView(wv, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
-        if (activate) {
-            switchToTab(tab.id, animate)
-            wv.loadUrl(initialUrl)
-        } else {
-            tab.needsLoad = true
-        }
+        switchToTab(tab.id, animate)
+        wv.loadUrl(initialUrl)
         renderTabStrip()
     }
 
@@ -536,20 +211,16 @@ class MainActivity : AppCompatActivity() {
         for (t in tabs) {
             if (t.id == id) {
                 t.webView.visibility = View.VISIBLE
-                if (t.needsLoad) {
-                    t.needsLoad = false
-                    t.webView.loadUrl(t.url)
-                }
                 if (animate) {
                     t.webView.alpha = 0f
                     t.webView.animate().alpha(1f).setDuration(220).start()
                 }
             } else {
-                          }
-        
+                t.webView.visibility = View.GONE
+            }
         }
         val t = activeTab
-        if (t != null && !urlBox.hasFocus()) urlBox.setText(t.url)
+        if (t != null && !ui.urlBox.hasFocus()) ui.urlBox.setText(t.url)
         renderTabStrip()
     }
 
@@ -557,10 +228,9 @@ class MainActivity : AppCompatActivity() {
         var target: BrowserTab? = null
         for (t in tabs) if (t.id == id) target = t
         if (target == null) return
-        webContainer.removeView(target.webView)
+        ui.webContainer.removeView(target.webView)
         target.webView.destroy()
         tabs.remove(target)
-        if (target.pinned) savePinned()
 
         if (tabs.isEmpty()) {
             addTab(home, false)
@@ -568,46 +238,35 @@ class MainActivity : AppCompatActivity() {
         }
         if (activeTabId == id) switchToTab(tabs[tabs.size - 1].id, true)
         renderTabStrip()
+        saveSession()
     }
 
     private fun closeAllTabs() {
-        val toClose = ArrayList<BrowserTab>()
-        for (t in tabs) if (!t.pinned) toClose.add(t)
-        for (t in toClose) {
-            webContainer.removeView(t.webView)
+        for (t in tabs) {
+            ui.webContainer.removeView(t.webView)
             t.webView.destroy()
-            tabs.remove(t)
         }
+        tabs.clear()
         addTab(home, true)
-        Toast.makeText(this, "Вкладки закрыты", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmCloseAll() {
-        var count = 0
-        for (t in tabs) if (!t.pinned) count = count + 1
         AlertDialog.Builder(this)
             .setTitle("Закрыть все вкладки?")
-            .setMessage("Будет закрыто вкладок: " + count + " (закреплённые останутся)")
+            .setMessage("Будет закрыто вкладок: " + tabs.size)
             .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
             .setNegativeButton("Отмена", null)
             .show()
     }
 
     private fun renderTabStrip() {
-        tabStrip.removeAllViews()
-        var activePill: View? = null
+        ui.tabStrip.removeAllViews()
         for (tab in tabs) {
             val isActive = tab.id == activeTabId
+            val isPinned = storage.isPinned(tab.url)
 
-            val pill = LinearLayout(this)
-            pill.orientation = LinearLayout.HORIZONTAL
-            pill.gravity = Gravity.CENTER_VERTICAL
-            if (isActive) {
-                pill.background = resources.getDrawable(R.drawable.bg_tab_active, theme)
-            } else {
-                pill.background = resources.getDrawable(R.drawable.bg_tab_inactive, theme)
-            }
-            pill.setPadding(dp(14), dp(8), dp(14), dp(8))
+            val pill = ui.makeTabPill(isActive)
             pill.setOnClickListener { switchToTab(tab.id, true) }
             pill.setOnLongClickListener {
                 showTabMenu(tab)
@@ -615,30 +274,240 @@ class MainActivity : AppCompatActivity() {
             }
 
             val titleView = TextView(this)
+            var prefix = ""
+            if (isPinned) prefix = "[P] "
             var title = tab.title
-            if (title.length > 18) title = title.substring(0, 18) + "..."
-            if (tab.pinned) title = "📌 " + title
-            titleView.text = title
+            if (title.length > 16) title = title.substring(0, 16) + "..."
+            titleView.text = prefix + title
             titleView.setTextColor(Color.WHITE)
             titleView.textSize = 13f
             titleView.maxLines = 1
             pill.addView(titleView)
 
-            val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
-            lp.marginEnd = dp(8)
-            tabStrip.addView(pill, lp)
-            if (isActive) activePill = pill
+            val lp = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            lp.marginEnd = ui.dp(8)
+            ui.tabStrip.addView(pill, lp)
 
-            // Анимация появления только у новых вкладок, остальные не мигают
-            if (!animatedIds.contains(tab.id)) {
-                animatedIds.add(tab.id)
-                pill.alpha = 0f
-                pill.scaleX = 0.7f
-                pill.scaleY = 0.7f
-                pill.animate()
-                    .alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(280)
+            ui.animatePillIn(pill)
+        }
+
+        ui.tabsCountBadge.text = tabs.size.toString()
+
+        ui.tabStripWrap.post {
+            ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0)
+        }
+    }
+
+    private fun showTabMenu(tab: BrowserTab) {
+        val isPinned = storage.isPinned(tab.url)
+        val pinLabel = if (isPinned) "Открепить вкладку" else "Закрепить вкладку"
+
+        val items = arrayOf(
+            pinLabel,
+            "Копировать название",
+            "Копировать адрес",
+            "Закрыть вкладку",
+            "Закрыть все вкладки"
+        )
+        AlertDialog.Builder(this)
+            .setTitle(tab.title)
+            .setItems(items) { _, which ->
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                if (which == 0) {
+                    if (isPinned) {
+                        storage.unpin(tab.url)
+                        Toast.makeText(this, "Вкладка откреплена", Toast.LENGTH_SHORT).show()
+                    } else {
+                        storage.pin(tab.url)
+                        Toast.makeText(this, "Вкладка закреплена", Toast.LENGTH_SHORT).show()
+                    }
+                    renderTabStrip()
+                } else if (which == 1) {
+                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
+                    Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show()
+                } else if (which == 2) {
+                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
+                    Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show()
+                } else if (which == 3) {
+                    closeTab(tab.id)
+                } else if (which == 4) {
+                    confirmCloseAll()
+                }
+            }
+            .show()
+    }
+
+    private fun showTabsDialog() {
+        val titles = ArrayList<String>()
+        for (tab in tabs) {
+            val prefix = if (tab.id == activeTabId) "● " else "   "
+            val pinMark = if (storage.isPinned(tab.url)) "[P] " else ""
+            titles.add(prefix + pinMark + tab.title)
+        }
+
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Вкладки (" + tabs.size + ")")
+            .setItems(titles.toTypedArray()) { _, which ->
+                switchToTab(tabs[which].id, true)
+            }
+            .setPositiveButton("Новая вкладка") { _, _ ->
+                ui.animateNewTabGhost(ui.bottomBar) { addTab(home, true) }
+            }
+            .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
+            .setNegativeButton("Отмена", null)
+            .create()
+        dlg.setOnShowListener {
+            val dv = dlg.window?.decorView
+            if (dv != null) {
+                dv.alpha = 0f
+                dv.scaleX = 0.6f
+                dv.scaleY = 0.6f
+                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                    .setDuration(260)
                     .setInterpolator(OvershootInterpolator())
                     .start()
             }
         }
+        dlg.show()
+    }
+
+    private fun showHistoryDialog() {
+        val history = storage.getHistory()
+        if (history.isEmpty()) {
+            Toast.makeText(this, "История пуста", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("История поиска (" + history.size + ")")
+            .setItems(history.toTypedArray()) { _, which ->
+                ui.urlBox.setText(history[which])
+                open(history[which])
+            }
+            .setNeutralButton("Очистить") { _, _ ->
+                storage.clearHistory()
+                Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Отмена", null)
+            .create()
+        dlg.setOnShowListener {
+            val dv = dlg.window?.decorView
+            if (dv != null) {
+                dv.alpha = 0f
+                dv.scaleX = 0.6f
+                dv.scaleY = 0.6f
+                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                    .setDuration(260)
+                    .setInterpolator(OvershootInterpolator())
+                    .start()
+            }
+        }
+        dlg.show()
+    }
+
+    private fun showSettingsDialog() {
+        val items = arrayOf(
+            "История поиска",
+            "Очистить кэш и cookies",
+            "Очистить историю поиска",
+            "Открыть домашнюю (Google)",
+            "Новая вкладка",
+            "Закрыть все вкладки",
+            "О приложении"
+        )
+        val dlg = AlertDialog.Builder(this)
+            .setTitle("Настройки")
+            .setItems(items) { _, which ->
+                if (which == 0) {
+                    showHistoryDialog()
+                } else if (which == 1) {
+                    wipeAll()
+                    Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show()
+                } else if (which == 2) {
+                    storage.clearHistory()
+                    Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
+                } else if (which == 3) {
+                    val t = activeTab
+                    if (t != null) t.webView.loadUrl(home)
+                } else if (which == 4) {
+                    addTab(home, true)
+                } else if (which == 5) {
+                    confirmCloseAll()
+                } else if (which == 6) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Приватный браузер")
+                        .setMessage("Версия 1.1")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+            .create()
+        dlg.setOnShowListener {
+            val dv = dlg.window?.decorView
+            if (dv != null) {
+                dv.alpha = 0f
+                dv.scaleX = 0.6f
+                dv.scaleY = 0.6f
+                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
+                    .setDuration(260)
+                    .setInterpolator(OvershootInterpolator())
+                    .start()
+            }
+        }
+        dlg.show()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val data = intent.dataString
+        if (data != null) {
+            open(data)
+        } else {
+            val t = activeTab
+            if (t != null) t.webView.loadUrl(home)
+        }
+    }
+
+    private fun open(input: String) {
+        val t = input.trim()
+        if (t.isEmpty()) return
+        val target: String
+        if (t.startsWith("https://")) {
+            target = t
+        } else if (t.startsWith("http://")) {
+            target = "https://" + t.substring(7)
+        } else if (!t.contains(" ") && t.contains(".")) {
+            target = "https://" + t
+        } else {
+            target = searchUrl + android.net.Uri.encode(t)
+        }
+        storage.addHistory(t)
+        ui.urlBox.clearFocus()
+        val tab = activeTab
+        if (tab != null) tab.webView.loadUrl(target)
+    }
+
+    private fun wipeAll() {
+        CookieManager.getInstance().removeAllCookies(null)
+        CookieManager.getInstance().flush()
+        for (t in tabs) {
+            t.webView.clearCache(true)
+            t.webView.clearHistory()
+        }
+        WebStorage.getInstance().deleteAllData()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        saveSession()
+    }
+
+    override fun onDestroy() {
+        saveSession()
+        wipeAll()
+        for (t in tabs) t.webView.destroy()
+        super.onDestroy()
+    }
+}
