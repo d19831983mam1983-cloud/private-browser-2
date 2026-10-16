@@ -42,6 +42,12 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import java.io.ByteArrayInputStream
 
+class BrowserTab(val id: Int) {
+    lateinit var webView: WebView
+    var url: String = ""
+    var title: String = "Новая вкладка"
+}
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webContainer: FrameLayout
@@ -56,7 +62,9 @@ class MainActivity : AppCompatActivity() {
     private var activeTabId = 0
     private var nextTabId = 1
 
-    private val searchUrl = "https://duckduckgo.com/?q="
+    private val duckUrl = "https://duckduckgo.com/?q="
+    private val googleUrl = "https://www.google.com/search?q="
+    private var searchUrl = "https://duckduckgo.com/?q="
     private val home = "https://www.google.com"
 
     private val blockedHosts = listOf(
@@ -72,6 +80,36 @@ class MainActivity : AppCompatActivity() {
             for (t in tabs) if (t.id == activeTabId) return t
             return null
         }
+
+    // ---------- helpers ----------
+
+    private fun dp(v: Int): Int {
+        return (v * resources.displayMetrics.density).toInt()
+    }
+
+    private fun gradientGlass(radius: Int): GradientDrawable {
+        val g = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            intArrayOf(Color.parseColor("#26FFFFFF"), Color.parseColor("#12FFFFFF"))
+        )
+        g.cornerRadius = radius.toFloat()
+        g.setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+        return g
+    }
+
+    private fun textNavButton(label: String): TextView {
+        val b = TextView(this)
+        b.text = label
+        b.setTextColor(Color.WHITE)
+        b.textSize = 20f
+        b.gravity = Gravity.CENTER
+        b.background = gradientGlass(dp(28))
+        b.isClickable = true
+        b.isFocusable = true
+        return b
+    }
+
+    // ---------- lifecycle ----------
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -213,7 +251,11 @@ class MainActivity : AppCompatActivity() {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        addTab(home, false)
+        // Чистим остатки прошлой сессии, если приложение было убито системой
+        wipeAll()
+
+        val startUrl = intent?.dataString
+        if (startUrl != null) addTab(startUrl, false) else addTab(home, false)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -222,6 +264,24 @@ class MainActivity : AppCompatActivity() {
             }
         })
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        val data = intent.dataString
+        if (data != null) addTab(data, true)
+    }
+
+    override fun onDestroy() {
+        wipeAll()
+        for (t in tabs) {
+            webContainer.removeView(t.webView)
+            t.webView.destroy()
+        }
+        tabs.clear()
+        super.onDestroy()
+    }
+
+    // ---------- animations ----------
 
     private fun animateNewTabFromButton(button: View) {
         val startLoc = IntArray(2)
@@ -280,10 +340,6 @@ class MainActivity : AppCompatActivity() {
                     .setInterpolator(OvershootInterpolator()).start()
             }.start()
 
-        animX.start()
-        animY.start()
-        animW.start()
-
         animX.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
                 ghost.animate().alpha(0f).setDuration(120).withEndAction {
@@ -292,6 +348,10 @@ class MainActivity : AppCompatActivity() {
                 addTab(home, true)
             }
         })
+
+        animX.start()
+        animY.start()
+        animW.start()
     }
 
     private fun animateDialogFromButton(button: View, show: () -> Unit) {
@@ -302,6 +362,8 @@ class MainActivity : AppCompatActivity() {
             }.start()
         button.postDelayed({ show() }, 140)
     }
+
+    // ---------- tabs ----------
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun addTab(initialUrl: String, animate: Boolean) {
@@ -318,6 +380,7 @@ class MainActivity : AppCompatActivity() {
         wv.settings.allowContentAccess = false
         wv.settings.setGeolocationEnabled(false)
         wv.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        @Suppress("DEPRECATION")
         wv.settings.saveFormData = false
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
         wv.visibility = View.GONE
@@ -376,6 +439,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         tab.webView = wv
+        tab.url = initialUrl
         tabs.add(tab)
         webContainer.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
@@ -485,50 +549,4 @@ class MainActivity : AppCompatActivity() {
         tabStripWrap.post {
             tabStripWrap.smoothScrollTo(tabStrip.width, 0)
         }
-    }
-
-    private fun showTabMenu(tab: BrowserTab) {
-        val items = arrayOf(
-            "Копировать название",
-            "Копировать адрес",
-            "Закрыть вкладку",
-            "Закрыть все вкладки"
-        )
-        AlertDialog.Builder(this)
-            .setTitle(tab.title)
-            .setItems(items) { _, which ->
-                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                if (which == 0) {
-                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
-                    Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show()
-                } else if (which == 1) {
-                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
-                    Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show()
-                } else if (which == 2) {
-                    closeTab(tab.id)
-                } else if (which == 3) {
-                    confirmCloseAll()
-                }
-            }
-            .show()
-    }
-
-    private fun showTabsDialog() {
-        val titles = ArrayList<String>()
-        for (tab in tabs) {
-            val prefix = if (tab.id == activeTabId) "● " else "   "
-            titles.add(prefix + tab.title)
-        }
-
-        val dlg = AlertDialog.Builder(this)
-            .setTitle("Вкладки (" + tabs.size + ")")
-            .setItems(titles.toTypedArray()) { _, which ->
-                switchToTab(tabs[which].id, true)
-            }
-            .setPositiveButton("Новая вкладка") { _, _ -> animateNewTabFromButton(bottomBar) }
-            .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
-            .setNegativeButton("Отмена", null)
-            .create()
-        dlg.setOnShowListener {
-            val dv = dlg.window?.decorView
-            if (dv != null) {
+        
