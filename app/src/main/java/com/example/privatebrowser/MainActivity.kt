@@ -1,5 +1,9 @@
 package com.example.privatebrowser
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -12,9 +16,12 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowManager
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.view.inputmethod.EditorInfo
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
@@ -40,9 +47,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webContainer: FrameLayout
     private lateinit var tabStrip: LinearLayout
+    private lateinit var tabStripWrap: HorizontalScrollView
     private lateinit var urlBox: EditText
     private lateinit var bar: ProgressBar
     private lateinit var tabsCountBadge: TextView
+    private lateinit var bottomBar: LinearLayout
 
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
@@ -131,7 +140,7 @@ class MainActivity : AppCompatActivity() {
             topMargin = dp(4); marginStart = dp(14); marginEnd = dp(14)
         })
 
-        val tabStripWrap = HorizontalScrollView(this).apply {
+        tabStripWrap = HorizontalScrollView(this).apply {
             isHorizontalScrollBarEnabled = false
             setPadding(0, dp(8), 0, 0)
         }
@@ -148,8 +157,8 @@ class MainActivity : AppCompatActivity() {
         webContainer = FrameLayout(this)
         root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        // ---------- НИЖНЯЯ ПАНЕЛЬ (ровно 3 кнопки, без иконок) ----------
-        val bottomBar = LinearLayout(this).apply {
+        // ---------- НИЖНЯЯ ПАНЕЛЬ ----------
+        bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(dp(16), dp(10), dp(16), dp(10))
@@ -157,7 +166,6 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(10).toFloat()
         }
 
-        // 1. Вкладки
         val tabsBtn = textNavButton("☰") { showTabsDialog() }
         val tabsWrapper = FrameLayout(this)
         tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
@@ -175,11 +183,8 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.TOP or Gravity.END
         })
 
-        // 2. Новая вкладка
-        val newTabBtn = textNavButton("＋") { addTab(home) }
-
-        // 3. Настройки
-        val settingsBtn = textNavButton("⚙") { showSettingsDialog() }
+        val newTabBtn = textNavButton("＋") { animateNewTabFromButton(it) }
+        val settingsBtn = textNavButton("⚙") { animateDialogFromButton(it) { showSettingsDialog() } }
 
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
         bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
@@ -191,7 +196,28 @@ class MainActivity : AppCompatActivity() {
 
         setContentView(root)
 
-        addTab(home)
+        // ---------- Анимация появления верхней панели ----------
+        topBlock.alpha = 0f
+        topBlock.translationY = -dp(60).toFloat()
+        topBlock.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(500)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        // ---------- Анимация появления нижней панели ----------
+        bottomBar.alpha = 0f
+        bottomBar.translationY = dp(60).toFloat()
+        bottomBar.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(500)
+            .setStartDelay(120)
+            .setInterpolator(DecelerateInterpolator())
+            .start()
+
+        addTab(home, animate = false)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -201,8 +227,90 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // ================== АНИМАЦИИ ==================
+
+    /** При клике на ＋ новая вкладка "выезжает" из кнопки */
+    private fun animateNewTabFromButton(button: View) {
+        val startX = IntArray(2).also { button.getLocationOnScreen(it) }[0]
+        val startY = IntArray(2).also { button.getLocationOnScreen(it) }[1]
+        val startW = button.width
+        val startH = button.height
+
+        // Летящий "призрак" вкладки, который из кнопки переместится в ленту
+        val ghost = TextView(this).apply {
+            text = "Новая вкладка"
+            setTextColor(Color.WHITE)
+            textSize = 13f
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(14), 0)
+            background = resources.getDrawable(R.drawable.bg_tab_active, theme)
+            alpha = 0.95f
+            elevation = dp(12).toFloat()
+        }
+        val rootView = window.decorView as ViewGroup
+        val lp = FrameLayout.LayoutParams(startW, startH).apply {
+            leftMargin = startX
+            topMargin = startY
+        }
+        rootView.addView(ghost, lp)
+
+        // Конечные координаты — начало ленты вкладок
+        val endX = IntArray(2).also { tabStrip.getLocationOnScreen(it) }[0] + dp(8)
+        val endY = IntArray(2).also { tabStrip.getLocationOnScreen(it) }[1]
+
+        val animX = ValueAnimator.ofInt(startX, endX).apply {
+            duration = 420
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { ghost.translationX = (it.animatedValue as Int - startX).toFloat() }
+        }
+        val animY = ValueAnimator.ofInt(startY, endY).apply {
+            duration = 420
+            interpolator = DecelerateInterpolator()
+            addUpdateListener { ghost.translationY = (it.animatedValue as Int - startY).toFloat() }
+        }
+        val animW = ValueAnimator.ofInt(startW, dp(140)).apply {
+            duration = 420
+            addUpdateListener {
+                ghost.layoutParams = (ghost.layoutParams as FrameLayout.LayoutParams).apply {
+                    width = it.animatedValue as Int
+                }
+            }
+        }
+
+        // Пульс кнопки
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
+            .withEndAction {
+                button.animate().scaleX(1f).scaleY(1f).setDuration(180)
+                    .setInterpolator(OvershootInterpolator()).start()
+            }.start()
+
+        animX.start(); animY.start(); animW.start()
+
+        animX.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                ghost.animate().alpha(0f).setDuration(120).withEndAction {
+                    rootView.removeView(ghost)
+                }.start()
+                addTab(home, animate = true)
+            }
+        })
+    }
+
+    /** При клике на ⚙ / ☰ — диалог "вырастает" из кнопки */
+    private fun animateDialogFromButton(button: View, show: () -> Unit) {
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
+            .withEndAction {
+                button.animate().scaleX(1f).scaleY(1f).setDuration(200)
+                    .setInterpolator(OvershootInterpolator()).start()
+            }.start()
+        // Небольшая задержка, чтобы успел проиграть "пульс"
+        button.postDelayed({ show() }, 140)
+    }
+
+    // ================== ВКЛАДКИ ==================
+
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addTab(initialUrl: String) {
+    private fun addTab(initialUrl: String, animate: Boolean = true) {
         val tab = BrowserTab(nextTabId++)
 
         val wv = WebView(this).apply {
@@ -275,15 +383,20 @@ class MainActivity : AppCompatActivity() {
         tabs.add(tab)
         webContainer.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
-        switchToTab(tab.id)
+        switchToTab(tab.id, animateTab = animate)
         wv.loadUrl(initialUrl)
         renderTabStrip()
     }
 
-    private fun switchToTab(id: Int) {
+    private fun switchToTab(id: Int, animateTab: Boolean = true) {
         activeTabId = id
         tabs.forEach { t ->
-            t.webView.visibility = if (t.id == id) View.VISIBLE else View.GONE
+            val show = t.id == id
+            t.webView.visibility = if (show) View.VISIBLE else View.GONE
+            if (show && animateTab) {
+                t.webView.alpha = 0f
+                t.webView.animate().alpha(1f).setDuration(220).start()
+            }
         }
         val t = activeTab ?: return
         if (!urlBox.hasFocus()) urlBox.setText(t.url)
@@ -297,7 +410,7 @@ class MainActivity : AppCompatActivity() {
         tabs.remove(t)
 
         if (tabs.isEmpty()) {
-            addTab(home)
+            addTab(home, animate = false)
             return
         }
         if (activeTabId == id) switchToTab(tabs.last().id)
@@ -352,114 +465,47 @@ class MainActivity : AppCompatActivity() {
                 marginEnd = dp(8)
             }
             tabStrip.addView(pill, lp)
+
+            // Плавное появление каждой пилюли
+            pill.alpha = 0f
+            pill.scaleX = 0.7f
+            pill.scaleY = 0.7f
+            pill.animate()
+                .alpha(1f).scaleX(1f).scaleY(1f)
+                .setDuration(280)
+                .setInterpolator(OvershootInterpolator())
+                .start()
         }
 
         tabsCountBadge.text = tabs.size.toString()
+
+        // Автоскролл к последней вкладке
+        tabStripWrap.post {
+            tabStripWrap.smoothScrollTo(tabStrip.width, 0)
+        }
     }
+
+    // ================== ДИАЛОГИ (с анимацией появления из центра/снизу) ==================
 
     private fun showTabsDialog() {
         val titles = tabs.map {
             (if (it.id == activeTabId) "● " else "   ") + it.title
         }.toTypedArray()
 
-        AlertDialog.Builder(this)
+        val dlg = AlertDialog.Builder(this)
             .setTitle("Вкладки (${tabs.size})")
             .setItems(titles) { _, which ->
                 switchToTab(tabs[which].id)
             }
-            .setPositiveButton("Новая вкладка") { _, _ -> addTab(home) }
+            .setPositiveButton("Новая вкладка") { _, _ -> animateNewTabFromButton(bottomBar) }
             .setNegativeButton("Закрыть", null)
-            .show()
-    }
-
-    private fun showSettingsDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Настройки")
-            .setItems(arrayOf(
-                "Очистить кэш и cookies",
-                "Открыть домашнюю (Google)",
-                "Новая вкладка",
-                "О приложении"
-            )) { _, which ->
-                when (which) {
-                    0 -> {
-                        wipeAll()
-                        Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show()
-                    }
-                    1 -> activeTab?.webView?.loadUrl(home)
-                    2 -> addTab(home)
-                    3 -> AlertDialog.Builder(this)
-                        .setTitle("Приватный браузер")
-                        .setMessage("Версия 1.0\nПоиск: DuckDuckGo\nДомашняя: Google\nБез трекеров, без истории, без рекламы.")
-                        .setPositiveButton("OK", null)
-                        .show()
-                }
-            }
-            .show()
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        val data = intent.dataString
-        if (data != null) open(data) else activeTab?.webView?.loadUrl(home)
-    }
-
-    private fun open(input: String) {
-        val t = input.trim()
-        if (t.isEmpty()) return
-        val target = when {
-            t.startsWith("https://") -> t
-            t.startsWith("http://") -> "https://" + t.removePrefix("http://")
-            !t.contains(" ") && t.contains(".") -> "https://$t"
-            else -> searchUrl + android.net.Uri.encode(t)
-        }
-        urlBox.clearFocus()
-        activeTab?.webView?.loadUrl(target)
-    }
-
-    private fun wipeAll() {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
-        tabs.forEach { it.webView.clearCache(true); it.webView.clearHistory() }
-        WebStorage.getInstance().deleteAllData()
-    }
-
-    override fun onDestroy() {
-        wipeAll()
-        tabs.forEach { it.webView.destroy() }
-        super.onDestroy()
-    }
-
-    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
-
-    private fun textNavButton(symbol: String, onClick: () -> Unit): TextView {
-        return TextView(this).apply {
-            text = symbol
-            setTextColor(Color.WHITE)
-            textSize = 22f
-            gravity = Gravity.CENTER
-            background = GradientDrawable(
-                GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.parseColor("#66FFFFFF"), Color.parseColor("#33FFFFFF"))
-            ).apply {
-                shape = GradientDrawable.OVAL
-                setStroke(dp(1), Color.parseColor("#88FFFFFF"))
-            }
-            setOnClickListener { onClick() }
-        }
-    }
-
-    private fun gradientGlass(radiusDp: Int): GradientDrawable {
-        return GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(
-                Color.parseColor("#66FFFFFF"),
-                Color.parseColor("#33FFFFFF"),
-                Color.parseColor("#22FFFFFF")
-            )
-        ).apply {
-            cornerRadius = dp(radiusDp).toFloat()
-            setStroke(dp(1), Color.parseColor("#66FFFFFF"))
-        }
-    }
-}
+            .create()
+        dlg.setOnShowListener {
+            dlg.window?.decorView?.apply {
+                alpha = 0f
+                scaleX = 0.6f
+                scaleY = 0.6f
+                animate().alpha(1f).scaleX(1f).scaleY(1f)
+                    .setDuration(260)
+                    .setInterpolator(OvershootInterpolator())
+  
