@@ -27,7 +27,6 @@ import android.webkit.WebViewClient
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -44,7 +43,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var urlBox: EditText
     private lateinit var bar: ProgressBar
     private lateinit var tabsCountBadge: TextView
-    private lateinit var backBtn: ImageButton
 
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
@@ -96,16 +94,8 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(6).toFloat()
         }
 
-        val homeBtn = ImageButton(this).apply {
-            setImageResource(R.drawable.ic_home)
-            background = null
-            setColorFilter(Color.WHITE)
-            setOnClickListener { activeTab?.webView?.loadUrl(home) }
-        }
-        urlRow.addView(homeBtn, LinearLayout.LayoutParams(dp(40), dp(40)))
-
         urlBox = EditText(this).apply {
-            hint = "Поиск в DuckDuckGo или адрес"
+            hint = "Поиск или адрес"
             setHintTextColor(Color.parseColor("#CCFFFFFF"))
             setTextColor(Color.WHITE)
             textSize = 15f
@@ -126,21 +116,7 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this@MainActivity, "Скопировано", Toast.LENGTH_SHORT).show()
             true
         }
-        urlRow.addView(urlBox, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f).apply {
-            marginStart = dp(6); marginEnd = dp(6)
-        })
-
-        val wipeBtn = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
-            background = null
-            setColorFilter(Color.WHITE)
-            setOnClickListener {
-                wipeAll()
-                activeTab?.webView?.loadUrl(home)
-                Toast.makeText(this@MainActivity, "Данные стёрты", Toast.LENGTH_SHORT).show()
-            }
-        }
-        urlRow.addView(wipeBtn, LinearLayout.LayoutParams(dp(40), dp(40)))
+        urlRow.addView(urlBox, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
 
         topBlock.addView(urlRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
@@ -172,7 +148,7 @@ class MainActivity : AppCompatActivity() {
         webContainer = FrameLayout(this)
         root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        // ---------- НИЖНЯЯ ПАНЕЛЬ (3 кнопки по центру) ----------
+        // ---------- НИЖНЯЯ ПАНЕЛЬ (ровно 3 кнопки, без иконок) ----------
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -181,11 +157,8 @@ class MainActivity : AppCompatActivity() {
             elevation = dp(10).toFloat()
         }
 
-        backBtn = navButton(R.drawable.ic_back) {
-            activeTab?.webView?.let { if (it.canGoBack()) it.goBack() }
-        }
-
-        val tabsBtn = navButton(R.drawable.ic_tabs) { showTabsDialog() }
+        // 1. Вкладки
+        val tabsBtn = textNavButton("☰") { showTabsDialog() }
         val tabsWrapper = FrameLayout(this)
         tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
         tabsCountBadge = TextView(this).apply {
@@ -202,11 +175,15 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.TOP or Gravity.END
         })
 
-        val settingsBtn = navButton(R.drawable.ic_settings) { showSettingsDialog() }
+        // 2. Новая вкладка
+        val newTabBtn = textNavButton("＋") { addTab(home) }
 
-        bottomBar.addView(backBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
+        // 3. Настройки
+        val settingsBtn = textNavButton("⚙") { showSettingsDialog() }
+
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
+        bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
         bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
         bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
 
@@ -276,7 +253,6 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(v: WebView, url: String) {
                 tab.title = v.title ?: url
                 renderTabStrip()
-                updateNavButtons()
             }
         }
 
@@ -312,7 +288,6 @@ class MainActivity : AppCompatActivity() {
         val t = activeTab ?: return
         if (!urlBox.hasFocus()) urlBox.setText(t.url)
         renderTabStrip()
-        updateNavButtons()
     }
 
     private fun closeTab(id: Int) {
@@ -341,12 +316,26 @@ class MainActivity : AppCompatActivity() {
                     if (isActive) R.drawable.bg_tab_active else R.drawable.bg_tab_inactive,
                     theme
                 )
-                setPadding(dp(14), dp(8), dp(6), dp(8))
+                setPadding(dp(14), dp(8), dp(14), dp(8))
                 setOnClickListener { switchToTab(tab.id) }
                 setOnLongClickListener {
-                    val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    cm.setPrimaryClip(ClipData.newPlainText("tab", tab.title))
-                    Toast.makeText(this@MainActivity, "Название скопировано", Toast.LENGTH_SHORT).show()
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle(tab.title)
+                        .setItems(arrayOf("Копировать название", "Копировать адрес", "Закрыть вкладку")) { _, which ->
+                            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            when (which) {
+                                0 -> {
+                                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
+                                    Toast.makeText(this@MainActivity, "Название скопировано", Toast.LENGTH_SHORT).show()
+                                }
+                                1 -> {
+                                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
+                                    Toast.makeText(this@MainActivity, "Адрес скопирован", Toast.LENGTH_SHORT).show()
+                                }
+                                2 -> closeTab(tab.id)
+                            }
+                        }
+                        .show()
                     true
                 }
             }
@@ -356,18 +345,8 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(Color.WHITE)
                 textSize = 13f
                 maxLines = 1
-                setPadding(0, 0, dp(6), 0)
             }
             pill.addView(titleView)
-
-            val closeBtn = ImageButton(this).apply {
-                setImageResource(R.drawable.ic_close)
-                background = null
-                setColorFilter(Color.parseColor("#DDFFFFFF"))
-                setPadding(dp(2), dp(2), dp(2), dp(2))
-                setOnClickListener { closeTab(tab.id) }
-            }
-            pill.addView(closeBtn, LinearLayout.LayoutParams(dp(22), dp(22)))
 
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
                 marginEnd = dp(8)
@@ -376,11 +355,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         tabsCountBadge.text = tabs.size.toString()
-    }
-
-    private fun updateNavButtons() {
-        val t = activeTab ?: return
-        backBtn.alpha = if (t.webView.canGoBack()) 1f else 0.35f
     }
 
     private fun showTabsDialog() {
@@ -458,11 +432,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
-    private fun navButton(iconRes: Int, onClick: () -> Unit): ImageButton {
-        return ImageButton(this).apply {
-            setImageResource(iconRes)
-            setColorFilter(Color.WHITE)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+    private fun textNavButton(symbol: String, onClick: () -> Unit): TextView {
+        return TextView(this).apply {
+            text = symbol
+            setTextColor(Color.WHITE)
+            textSize = 22f
+            gravity = Gravity.CENTER
             background = GradientDrawable(
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(Color.parseColor("#66FFFFFF"), Color.parseColor("#33FFFFFF"))
