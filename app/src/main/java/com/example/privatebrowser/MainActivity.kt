@@ -70,7 +70,7 @@ class MainActivity : AppCompatActivity() {
         ui.onOpen = { open(it) }
         ui.onTabsDialog = { showTabsDialog() }
         ui.onConfirmCloseAll = { confirmCloseAll() }
-        ui.onNewTab = { v -> ui.animateNewTabGhost(v) { addTab(home, true) } }
+        ui.onNewTab = { v -> ui.animateNewTabGhost(v) { addTab(home, true, true) } }
         ui.onSettings = { v -> ui.pulseButton(v) { showSettingsDialog() } }
         ui.onUrlLongPress = { text ->
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -100,18 +100,18 @@ class MainActivity : AppCompatActivity() {
     private fun restoreSession() {
         val saved = storage.loadSession()
         var opened = 0
-        for (u in saved.urls) if (u.isNotBlank()) { addTab(u, false); opened++ }
+        for (u in saved.urls) if (u.isNotBlank()) { addTab(u, false, false); opened++ }
         for (u in storage.getPinned()) {
             var has = false
             for (t in tabs) if (t.url == u) has = true
-            if (!has) { addTab(u, false); opened++ }
+            if (!has) { addTab(u, false, false); opened++ }
         }
-        if (opened == 0) addTab(home, false)
+        if (opened == 0) addTab(home, false, false)
         ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addTab(url: String, animate: Boolean) {
+    private fun addTab(url: String, animate: Boolean, scrollToEnd: Boolean) {
         val id = nextTabId; nextTabId++
         val tab = BrowserTab(id)
         val wv = WebView(this)
@@ -165,7 +165,7 @@ class MainActivity : AppCompatActivity() {
         switchToTab(tab.id, animate)
         wv.loadUrl(url)
         renderTabStrip()
-        ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
+        if (scrollToEnd) ui.tabStripWrap.post { ui.tabStripWrap.smoothScrollTo(ui.tabStrip.width, 0) }
     }
 
     private fun requestDownload(url: String, ua: String?, cd: String?, mt: String?) {
@@ -208,7 +208,7 @@ class MainActivity : AppCompatActivity() {
         ui.webContainer.removeView(target.webView)
         target.webView.destroy()
         tabs.remove(target)
-        if (tabs.isEmpty()) { addTab(home, false); return }
+        if (tabs.isEmpty()) { addTab(home, false, false); return }
         if (activeTabId == id) switchToTab(tabs[tabs.size - 1].id, true)
         renderTabStrip(); saveSession()
     }
@@ -220,7 +220,7 @@ class MainActivity : AppCompatActivity() {
             else { ui.webContainer.removeView(t.webView); t.webView.destroy() }
         }
         tabs.clear(); tabs.addAll(kept)
-        if (tabs.isEmpty()) addTab(home, true)
+        if (tabs.isEmpty()) addTab(home, true, true)
         else switchToTab(tabs[0].id, true)
         renderTabStrip(); saveSession()
         Toast.makeText(this, "Закрыты незакреплённые вкладки", Toast.LENGTH_SHORT).show()
@@ -288,7 +288,7 @@ class MainActivity : AppCompatActivity() {
         val dlg = AlertDialog.Builder(this)
             .setTitle("Вкладки (${tabs.size})")
             .setItems(titles.toTypedArray()) { _, w -> switchToTab(tabs[w].id, true) }
-            .setPositiveButton("Новая вкладка") { _, _ -> ui.animateNewTabGhost(ui.bottomBar) { addTab(home, true) } }
+            .setPositiveButton("Новая вкладка") { _, _ -> ui.animateNewTabGhost(ui.bottomBar) { addTab(home, true, true) } }
             .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
             .setNegativeButton("Отмена", null).create()
         animateDialog(dlg); dlg.show()
@@ -318,7 +318,7 @@ class MainActivity : AppCompatActivity() {
                 2 -> { wipeAll(); Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show() }
                 3 -> { storage.clearHistory(); Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show() }
                 4 -> activeTab?.webView?.loadUrl(home)
-                5 -> addTab(home, true)
+                5 -> addTab(home, true, true)
                 6 -> confirmCloseAll()
                 7 -> AlertDialog.Builder(this).setTitle("Приватный браузер").setMessage("Версия 1.4").setPositiveButton("OK", null).show()
             }
