@@ -10,85 +10,65 @@ class BrowserStorage(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("private_browser", Context.MODE_PRIVATE)
 
-    fun addHistory(query: String) {
-        if (query.isBlank()) return
-        val list = getHistory()
-        list.remove(query)
-        list.add(0, query)
-        while (list.size > 200) list.removeAt(list.size - 1)
-        val arr = JSONArray()
-        for (s in list) arr.put(s)
-        prefs.edit().putString("history", arr.toString()).apply()
+    fun addHistory(q: String) {
+        if (q.isBlank()) return
+        val l = getHistory(); l.remove(q); l.add(0, q)
+        while (l.size > 200) l.removeAt(l.size - 1)
+        val a = JSONArray(); for (s in l) a.put(s)
+        prefs.edit().putString("history", a.toString()).apply()
     }
 
     fun getHistory(): MutableList<String> {
-        val json = prefs.getString("history", "[]") ?: "[]"
-        val arr = JSONArray(json)
-        val list = mutableListOf<String>()
-        for (i in 0 until arr.length()) list.add(arr.getString(i))
-        return list
+        val a = JSONArray(prefs.getString("history", "[]") ?: "[]")
+        val l = mutableListOf<String>()
+        for (i in 0 until a.length()) l.add(a.getString(i))
+        return l
     }
 
-    fun clearHistory() {
-        prefs.edit().remove("history").apply()
-    }
+    fun clearHistory() { prefs.edit().remove("history").apply() }
 
     fun getPinned(): MutableList<String> {
-        val json = prefs.getString("pinned", "[]") ?: "[]"
-        val arr = JSONArray(json)
-        val list = mutableListOf<String>()
-        for (i in 0 until arr.length()) list.add(arr.getString(i))
-        return list
+        val a = JSONArray(prefs.getString("pinned", "[]") ?: "[]")
+        val l = mutableListOf<String>()
+        for (i in 0 until a.length()) l.add(a.getString(i))
+        return l
     }
 
-    fun isPinned(url: String): Boolean {
-        return getPinned().contains(url)
-    }
+    fun isPinned(url: String): Boolean = getPinned().contains(url)
 
     fun pin(url: String): Boolean {
-        val list = getPinned()
-        if (list.contains(url)) return false
-        list.add(url)
-        savePinned(list)
-        return true
+        val l = getPinned(); if (l.contains(url)) return false
+        l.add(url); savePinned(l); return true
     }
 
     fun unpin(url: String): Boolean {
-        val list = getPinned()
-        if (!list.remove(url)) return false
-        savePinned(list)
-        return true
+        val l = getPinned(); if (!l.remove(url)) return false
+        savePinned(l); return true
     }
 
-    private fun savePinned(list: MutableList<String>) {
-        val arr = JSONArray()
-        for (u in list) arr.put(u)
-        prefs.edit().putString("pinned", arr.toString()).apply()
+    private fun savePinned(l: MutableList<String>) {
+        val a = JSONArray(); for (u in l) a.put(u)
+        prefs.edit().putString("pinned", a.toString()).apply()
     }
 
     class SessionData(val urls: List<String>, val titles: List<String>)
 
     fun saveSession(urls: List<String>, titles: List<String>) {
-        val arr = JSONArray()
+        val a = JSONArray()
         for (i in urls.indices) {
             val o = JSONObject()
-            o.put("url", urls[i])
-            o.put("title", titles[i])
-            arr.put(o)
+            o.put("url", urls[i]); o.put("title", titles[i]); a.put(o)
         }
-        prefs.edit().putString("session", arr.toString()).apply()
+        prefs.edit().putString("session", a.toString()).apply()
     }
 
     fun loadSession(): SessionData {
-        val json = prefs.getString("session", "[]") ?: "[]"
-        val arr = JSONArray(json)
-        val urls = mutableListOf<String>()
-        val titles = mutableListOf<String>()
-        for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            urls.add(o.optString("url", ""))
-            titles.add(o.optString("title", ""))
+        val a = JSONArray(prefs.getString("session", "[]") ?: "[]")
+        val u = mutableListOf<String>(); val t = mutableListOf<String>()
+        for (i in 0 until a.length()) {
+            val o = a.getJSONObject(i)
+            u.add(o.optString("url", "")); t.add(o.optString("title", ""))
         }
-        return SessionData(urls, titles)
+        return SessionData(u, t)
     }
 }
