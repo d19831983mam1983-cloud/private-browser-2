@@ -184,8 +184,8 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.TOP or Gravity.END
         })
 
-        val newTabBtn = textNavButton("＋") { animateNewTabFromButton(it) }
-        val settingsBtn = textNavButton("⚙") { animateDialogFromButton(it) { showSettingsDialog() } }
+        val newTabBtn = textNavButton("+") { animateNewTabFromButton(it) }
+        val settingsBtn = textNavButton("S") { animateDialogFromButton(it) { showSettingsDialog() } }
 
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
         bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
@@ -233,21 +233,13 @@ class MainActivity : AppCompatActivity() {
         }
         tabs.clear()
         addTab(home, animate = true)
-        tabStrip.animate()
-            .alpha(0.4f)
-            .setDuration(120)
-            .withEndAction {
-                renderTabStrip()
-                tabStrip.animate().alpha(1f).setDuration(200).start()
-            }
-            .start()
         Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmCloseAll() {
         AlertDialog.Builder(this)
             .setTitle("Закрыть все вкладки?")
-            .setMessage("Будет закрыто вкладок: ${tabs.size}\nОстанется одна пустая.")
+            .setMessage("Будет закрыто вкладок: " + tabs.size)
             .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
             .setNegativeButton("Отмена", null)
             .show()
@@ -360,7 +352,7 @@ class MainActivity : AppCompatActivity() {
                 v: WebView, r: WebResourceRequest
             ): WebResourceResponse? {
                 val host = r.url.host ?: return null
-                if (blockedHosts.any { host == it || host.endsWith(".$it") }) {
+                if (blockedHosts.any { host == it || host.endsWith("." + it) }) {
                     return WebResourceResponse(
                         "text/plain", "utf-8",
                         ByteArrayInputStream(ByteArray(0))
@@ -476,7 +468,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             val titleView = TextView(this).apply {
-                text = if (tab.title.length > 18) tab.title.take(18) + "…" else tab.title
+                text = if (tab.title.length > 18) tab.title.take(18) + "..." else tab.title
                 setTextColor(Color.WHITE)
                 textSize = 13f
                 maxLines = 1
@@ -511,10 +503,18 @@ class MainActivity : AppCompatActivity() {
         }.toTypedArray()
 
         val dlg = AlertDialog.Builder(this)
-            .setTitle("Вкладки (${tabs.size})")
+            .setTitle("Вкладки (" + tabs.size + ")")
             .setItems(titles) { _, which ->
                 switchToTab(tabs[which].id)
             }
             .setPositiveButton("Новая вкладка") { _, _ -> animateNewTabFromButton(bottomBar) }
             .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
-            .setNegativeButton("Отмена", n
+            .setNegativeButton("Отмена", null)
+            .create()
+        dlg.setOnShowListener {
+            dlg.window?.decorView?.apply {
+                alpha = 0f
+                scaleX = 0.6f
+                scaleY = 0.6f
+                animate().alpha(1f).scaleX(1f).scaleY(1f)
+                 
