@@ -37,7 +37,6 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var ui: BrowserUI
     private lateinit var storage: BrowserStorage
-
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
     private var nextTabId = 1
@@ -63,11 +62,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         storage = BrowserStorage(this)
-
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
@@ -96,41 +91,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveSession() {
-        val urls = ArrayList<String>()
-        val titles = ArrayList<String>()
-        for (t in tabs) {
-            urls.add(t.url)
-            titles.add(t.title)
-        }
-        storage.saveSession(urls, titles)
+        val u = ArrayList<String>()
+        val t2 = ArrayList<String>()
+        for (t in tabs) { u.add(t.url); t2.add(t.title) }
+        storage.saveSession(u, t2)
     }
 
     private fun restoreSession() {
         val saved = storage.loadSession()
         var opened = 0
-        for (u in saved.urls) {
-            if (u.isNotBlank()) {
-                addTab(u, false)
-                opened++
-            }
-        }
+        for (u in saved.urls) if (u.isNotBlank()) { addTab(u, false); opened++ }
         for (u in storage.getPinned()) {
-            var already = false
-            for (t in tabs) if (t.url == u) already = true
-            if (!already) {
-                addTab(u, false)
-                opened++
-            }
+            var has = false
+            for (t in tabs) if (t.url == u) has = true
+            if (!has) { addTab(u, false); opened++ }
         }
         if (opened == 0) addTab(home, false)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addTab(initialUrl: String, animate: Boolean) {
-        val id = nextTabId
-        nextTabId++
+    private fun addTab(url: String, animate: Boolean) {
+        val id = nextTabId; nextTabId++
         val tab = BrowserTab(id)
-
         val wv = WebView(this)
         wv.setBackgroundColor(Color.parseColor("#0B0F1A"))
         wv.settings.javaScriptEnabled = true
@@ -143,103 +125,64 @@ class MainActivity : AppCompatActivity() {
         wv.settings.saveFormData = false
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
         wv.visibility = View.GONE
-        setupDownloadListener(wv)
+        wv.setDownloadListener { u, ua, cd, mt, _ -> requestDownload(u, ua, cd, mt) }
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
-                val scheme = r.url.scheme ?: return true
-                if (scheme == "http") {
-                    v.loadUrl(r.url.buildUpon().scheme("https").build().toString())
-                    return true
-                }
-                return scheme != "https"
+                val s = r.url.scheme ?: return true
+                if (s == "http") { v.loadUrl(r.url.buildUpon().scheme("https").build().toString()); return true }
+                return s != "https"
             }
-
-            override fun shouldInterceptRequest(
-                v: WebView, r: WebResourceRequest
-            ): WebResourceResponse? {
-                val host = r.url.host ?: return null
-                for (b in blockedHosts) {
-                    if (host == b || host.endsWith("." + b)) {
-                        return WebResourceResponse(
-                            "text/plain", "utf-8",
-                            ByteArrayInputStream(ByteArray(0))
-                        )
-                    }
-                }
+            override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse? {
+                val h = r.url.host ?: return null
+                for (b in blockedHosts) if (h == b || h.endsWith(".$b"))
+                    return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                 return null
             }
-
-            override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) {
-                tab.url = url
-                if (tab.id == activeTabId && !ui.urlBox.hasFocus()) ui.urlBox.setText(url)
+            override fun onPageStarted(v: WebView, u: String, f: Bitmap?) {
+                tab.url = u
+                if (tab.id == activeTabId && !ui.urlBox.hasFocus()) ui.urlBox.setText(u)
             }
-
-            override fun onPageFinished(v: WebView, url: String) {
-                val title = v.title
-                if (title != null) tab.title = title else tab.title = url
-                renderTabStrip()
-                saveSession()
+            override fun onPageFinished(v: WebView, u: String) {
+                tab.title = v.title ?: u
+                renderTabStrip(); saveSession()
             }
         }
-
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(v: WebView, p: Int) {
                 if (tab.id != activeTabId) return
                 ui.bar.progress = p
                 ui.bar.visibility = if (p in 1..99) View.VISIBLE else View.GONE
             }
-
-            override fun onReceivedTitle(v: WebView?, title: String?) {
-                if (title != null) {
-                    tab.title = title
-                    renderTabStrip()
-                }
+            override fun onReceivedTitle(v: WebView?, t: String?) {
+                if (t != null) { tab.title = t; renderTabStrip() }
             }
         }
-
         tab.webView = wv
         tabs.add(tab)
         ui.webContainer.addView(wv, ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-
         switchToTab(tab.id, animate)
-        wv.loadUrl(initialUrl)
+        wv.loadUrl(url)
         renderTabStrip()
     }
 
-    private fun setupDownloadListener(wv: WebView) {
-        wv.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-            requestDownload(url, userAgent, contentDisposition, mimeType)
-        }
-    }
-
-    private fun requestDownload(
-        url: String,
-        userAgent: String?,
-        contentDisposition: String?,
-        mimeType: String?
-    ) {
+    private fun requestDownload(url: String, ua: String?, cd: String?, mt: String?) {
         try {
-            val request = DownloadManager.Request(Uri.parse(url))
-            val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType)
-            request.setMimeType(mimeType)
-            if (userAgent != null) request.addRequestHeader("User-Agent", userAgent)
-            val cookie = CookieManager.getInstance().getCookie(url)
-            if (cookie != null) request.addRequestHeader("Cookie", cookie)
-            request.setTitle(fileName)
-            request.setDescription("Скачивание...")
-            request.allowScanningByMediaScanner()
-            request.setNotificationVisibility(
-                DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED
-            )
-            request.setDestinationInExternalPublicDir(
-                Environment.DIRECTORY_DOWNLOADS, fileName
-            )
-            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            dm.enqueue(request)
-            Toast.makeText(this, "Скачивание: " + fileName, Toast.LENGTH_LONG).show()
+            val req = DownloadManager.Request(Uri.parse(url))
+            val fn = URLUtil.guessFileName(url, cd, mt)
+            req.setMimeType(mt)
+            if (ua != null) req.addRequestHeader("User-Agent", ua)
+            val ck = CookieManager.getInstance().getCookie(url)
+            if (ck != null) req.addRequestHeader("Cookie", ck)
+            req.setTitle(fn)
+            req.setDescription("Скачивание...")
+            req.allowScanningByMediaScanner()
+            req.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            req.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fn)
+            (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(req)
+            Toast.makeText(this, "Скачивание: $fn", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
-            Toast.makeText(this, "Ошибка: " + e.message, Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -248,13 +191,8 @@ class MainActivity : AppCompatActivity() {
         for (t in tabs) {
             if (t.id == id) {
                 t.webView.visibility = View.VISIBLE
-                if (animate) {
-                    t.webView.alpha = 0f
-                    t.webView.animate().alpha(1f).setDuration(220).start()
-                }
-            } else {
-                t.webView.visibility = View.GONE
-            }
+                if (animate) { t.webView.alpha = 0f; t.webView.animate().alpha(1f).setDuration(440).start() }
+            } else t.webView.visibility = View.GONE
         }
         val t = activeTab
         if (t != null && !ui.urlBox.hasFocus()) ui.urlBox.setText(t.url)
@@ -268,32 +206,30 @@ class MainActivity : AppCompatActivity() {
         ui.webContainer.removeView(target.webView)
         target.webView.destroy()
         tabs.remove(target)
-        if (tabs.isEmpty()) {
-            addTab(home, false)
-            return
-        }
+        if (tabs.isEmpty()) { addTab(home, false); return }
         if (activeTabId == id) switchToTab(tabs[tabs.size - 1].id, true)
-        renderTabStrip()
-        saveSession()
+        renderTabStrip(); saveSession()
     }
 
     private fun closeAllTabs() {
+        val kept = ArrayList<BrowserTab>()
         for (t in tabs) {
-            ui.webContainer.removeView(t.webView)
-            t.webView.destroy()
+            if (storage.isPinned(t.url)) kept.add(t)
+            else { ui.webContainer.removeView(t.webView); t.webView.destroy() }
         }
-        tabs.clear()
-        addTab(home, true)
-        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
+        tabs.clear(); tabs.addAll(kept)
+        if (tabs.isEmpty()) addTab(home, true)
+        else switchToTab(tabs[0].id, true)
+        renderTabStrip(); saveSession()
+        Toast.makeText(this, "Закрыты незакреплённые вкладки", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmCloseAll() {
         AlertDialog.Builder(this)
-            .setTitle("Закрыть все вкладки?")
-            .setMessage("Будет закрыто вкладок: " + tabs.size)
-            .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
-            .setNegativeButton("Отмена", null)
-            .show()
+            .setTitle("Закрыть вкладки?")
+            .setMessage("Закреплённые вкладки останутся открытыми.")
+            .setPositiveButton("Закрыть") { _, _ -> closeAllTabs() }
+            .setNegativeButton("Отмена", null).show()
     }
 
     private fun renderTabStrip() {
@@ -301,25 +237,17 @@ class MainActivity : AppCompatActivity() {
         for (tab in tabs) {
             val isActive = tab.id == activeTabId
             val isPinned = storage.isPinned(tab.url)
-
             val pill = ui.makeTabPill(isActive)
             pill.setOnClickListener { switchToTab(tab.id, true) }
             pill.setOnLongClickListener { showTabMenu(tab); true }
-
-            val titleView = TextView(this)
+            val tv = TextView(this)
             val prefix = if (isPinned) "[P] " else ""
             var title = tab.title
             if (title.length > 16) title = title.substring(0, 16) + "..."
-            titleView.text = prefix + title
-            titleView.setTextColor(Color.WHITE)
-            titleView.textSize = 13f
-            titleView.maxLines = 1
-            pill.addView(titleView)
-
-            val lp = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            tv.text = prefix + title
+            tv.setTextColor(Color.WHITE); tv.textSize = 13f; tv.maxLines = 1
+            pill.addView(tv)
+            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             lp.marginEnd = ui.dp(8)
             ui.tabStrip.addView(pill, lp)
             ui.animatePillIn(pill)
@@ -331,39 +259,21 @@ class MainActivity : AppCompatActivity() {
     private fun showTabMenu(tab: BrowserTab) {
         val isPinned = storage.isPinned(tab.url)
         val pinLabel = if (isPinned) "Открепить вкладку" else "Закрепить вкладку"
-        val items = arrayOf(
-            pinLabel,
-            "Копировать название",
-            "Копировать адрес",
-            "Закрыть вкладку",
-            "Закрыть все вкладки"
-        )
-        AlertDialog.Builder(this)
-            .setTitle(tab.title)
-            .setItems(items) { _, which ->
-                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                if (which == 0) {
-                    if (isPinned) {
-                        storage.unpin(tab.url)
-                        Toast.makeText(this, "Вкладка откреплена", Toast.LENGTH_SHORT).show()
-                    } else {
-                        storage.pin(tab.url)
-                        Toast.makeText(this, "Вкладка закреплена", Toast.LENGTH_SHORT).show()
-                    }
+        val items = arrayOf(pinLabel, "Копировать название", "Копировать адрес", "Закрыть вкладку", "Закрыть все незакреплённые")
+        AlertDialog.Builder(this).setTitle(tab.title).setItems(items) { _, w ->
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            when (w) {
+                0 -> {
+                    if (isPinned) { storage.unpin(tab.url); Toast.makeText(this, "Откреплена", Toast.LENGTH_SHORT).show() }
+                    else { storage.pin(tab.url); Toast.makeText(this, "Закреплена", Toast.LENGTH_SHORT).show() }
                     renderTabStrip()
-                } else if (which == 1) {
-                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
-                    Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show()
-                } else if (which == 2) {
-                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
-                    Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show()
-                } else if (which == 3) {
-                    closeTab(tab.id)
-                } else if (which == 4) {
-                    confirmCloseAll()
                 }
+                1 -> { cm.setPrimaryClip(ClipData.newPlainText("title", tab.title)); Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show() }
+                2 -> { cm.setPrimaryClip(ClipData.newPlainText("url", tab.url)); Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show() }
+                3 -> closeTab(tab.id)
+                4 -> confirmCloseAll()
             }
-            .show()
+        }.show()
     }
 
     private fun showTabsDialog() {
@@ -374,157 +284,87 @@ class MainActivity : AppCompatActivity() {
             titles.add(prefix + pinMark + tab.title)
         }
         val dlg = AlertDialog.Builder(this)
-            .setTitle("Вкладки (" + tabs.size + ")")
-            .setItems(titles.toTypedArray()) { _, which ->
-                switchToTab(tabs[which].id, true)
-            }
-            .setPositiveButton("Новая вкладка") { _, _ ->
-                ui.animateNewTabGhost(ui.bottomBar) { addTab(home, true) }
-            }
+            .setTitle("Вкладки (${tabs.size})")
+            .setItems(titles.toTypedArray()) { _, w -> switchToTab(tabs[w].id, true) }
+            .setPositiveButton("Новая вкладка") { _, _ -> ui.animateNewTabGhost(ui.bottomBar) { addTab(home, true) } }
             .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
-            .setNegativeButton("Отмена", null)
-            .create()
-        animateDialog(dlg)
-        dlg.show()
+            .setNegativeButton("Отмена", null).create()
+        animateDialog(dlg); dlg.show()
     }
 
     private fun showHistoryDialog() {
         val history = storage.getHistory()
-        if (history.isEmpty()) {
-            Toast.makeText(this, "История пуста", Toast.LENGTH_SHORT).show()
-            return
-        }
+        if (history.isEmpty()) { Toast.makeText(this, "История пуста", Toast.LENGTH_SHORT).show(); return }
         val dlg = AlertDialog.Builder(this)
-            .setTitle("История поиска (" + history.size + ")")
-            .setItems(history.toTypedArray()) { _, which ->
-                ui.urlBox.setText(history[which])
-                open(history[which])
-            }
-            .setNeutralButton("Очистить") { _, _ ->
-                storage.clearHistory()
-                Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Отмена", null)
-            .create()
-        animateDialog(dlg)
-        dlg.show()
+            .setTitle("История поиска (${history.size})")
+            .setItems(history.toTypedArray()) { _, w -> ui.urlBox.setText(history[w]); open(history[w]) }
+            .setNeutralButton("Очистить") { _, _ -> storage.clearHistory(); Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show() }
+            .setNegativeButton("Отмена", null).create()
+        animateDialog(dlg); dlg.show()
     }
 
     private fun showSettingsDialog() {
         val items = arrayOf(
-            "История поиска",
-            "Загрузки",
-            "Очистить кэш и cookies",
-            "Очистить историю поиска",
-            "Открыть домашнюю (Google)",
-            "Новая вкладка",
-            "Закрыть все вкладки",
-            "О приложении"
+            "История поиска", "Загрузки", "Очистить кэш и cookies",
+            "Очистить историю поиска", "Открыть домашнюю (Google)",
+            "Новая вкладка", "Закрыть все незакреплённые", "О приложении"
         )
-        val dlg = AlertDialog.Builder(this)
-            .setTitle("Настройки")
-            .setItems(items) { _, which ->
-                if (which == 0) {
-                    showHistoryDialog()
-                } else if (which == 1) {
-                    openDownloadsFolder()
-                } else if (which == 2) {
-                    wipeAll()
-                    Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show()
-                } else if (which == 3) {
-                    storage.clearHistory()
-                    Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show()
-                } else if (which == 4) {
-                    val t = activeTab
-                    if (t != null) t.webView.loadUrl(home)
-                } else if (which == 5) {
-                    addTab(home, true)
-                } else if (which == 6) {
-                    confirmCloseAll()
-                } else if (which == 7) {
-                    AlertDialog.Builder(this)
-                        .setTitle("Приватный браузер")
-                        .setMessage("Версия 1.2\nСкачивание файлов.")
-                        .setPositiveButton("OK", null)
-                        .show()
-                }
+        val dlg = AlertDialog.Builder(this).setTitle("Настройки").setItems(items) { _, w ->
+            when (w) {
+                0 -> showHistoryDialog()
+                1 -> try { startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)) } catch (e: Exception) { Toast.makeText(this, "Ошибка", Toast.LENGTH_SHORT).show() }
+                2 -> { wipeAll(); Toast.makeText(this, "Очищено", Toast.LENGTH_SHORT).show() }
+                3 -> { storage.clearHistory(); Toast.makeText(this, "История очищена", Toast.LENGTH_SHORT).show() }
+                4 -> activeTab?.webView?.loadUrl(home)
+                5 -> addTab(home, true)
+                6 -> confirmCloseAll()
+                7 -> AlertDialog.Builder(this).setTitle("Приватный браузер").setMessage("Версия 1.3").setPositiveButton("OK", null).show()
             }
-            .create()
-        animateDialog(dlg)
-        dlg.show()
+        }.create()
+        animateDialog(dlg); dlg.show()
     }
 
     private fun animateDialog(dlg: AlertDialog) {
         dlg.setOnShowListener {
             val dv = dlg.window?.decorView
             if (dv != null) {
-                dv.alpha = 0f
-                dv.scaleX = 0.6f
-                dv.scaleY = 0.6f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(260)
-                    .setInterpolator(OvershootInterpolator())
-                    .start()
+                dv.alpha = 0f; dv.scaleX = 0.6f; dv.scaleY = 0.6f
+                dv.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(520).setInterpolator(OvershootInterpolator()).start()
             }
-        }
-    }
-
-    private fun openDownloadsFolder() {
-        try {
-            startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Не удалось открыть загрузки", Toast.LENGTH_SHORT).show()
         }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        val data = intent.dataString
-        if (data != null) {
-            open(data)
-        } else {
-            val t = activeTab
-            if (t != null) t.webView.loadUrl(home)
-        }
+        val d = intent.dataString
+        if (d != null) open(d) else activeTab?.webView?.loadUrl(home)
     }
 
     private fun open(input: String) {
         val t = input.trim()
         if (t.isEmpty()) return
-        val target: String
-        if (t.startsWith("https://")) {
-            target = t
-        } else if (t.startsWith("http://")) {
-            target = "https://" + t.substring(7)
-        } else if (!t.contains(" ") && t.contains(".")) {
-            target = "https://" + t
-        } else {
-            target = searchUrl + Uri.encode(t)
+        val target = when {
+            t.startsWith("https://") -> t
+            t.startsWith("http://") -> "https://" + t.substring(7)
+            !t.contains(" ") && t.contains(".") -> "https://$t"
+            else -> searchUrl + Uri.encode(t)
         }
         storage.addHistory(t)
         ui.urlBox.clearFocus()
-        val tab = activeTab
-        if (tab != null) tab.webView.loadUrl(target)
+        activeTab?.webView?.loadUrl(target)
     }
 
     private fun wipeAll() {
         CookieManager.getInstance().removeAllCookies(null)
         CookieManager.getInstance().flush()
-        for (t in tabs) {
-            t.webView.clearCache(true)
-            t.webView.clearHistory()
-        }
+        for (t in tabs) { t.webView.clearCache(true); t.webView.clearHistory() }
         WebStorage.getInstance().deleteAllData()
     }
 
-    override fun onPause() {
-        super.onPause()
-        saveSession()
-    }
+    override fun onPause() { super.onPause(); saveSession() }
 
     override fun onDestroy() {
-        saveSession()
-        wipeAll()
+        saveSession(); wipeAll()
         for (t in tabs) t.webView.destroy()
         super.onDestroy()
     }
