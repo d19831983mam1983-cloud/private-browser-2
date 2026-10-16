@@ -2,7 +2,6 @@ package com.example.privatebrowser
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
-import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ClipData
@@ -167,6 +166,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         val tabsBtn = textNavButton("☰") { showTabsDialog() }
+        // Долгое нажатие на ☰ — быстрое закрытие всех вкладок
+        tabsBtn.setOnLongClickListener {
+            confirmCloseAll()
+            true
+        }
+
         val tabsWrapper = FrameLayout(this)
         tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
         tabsCountBadge = TextView(this).apply {
@@ -227,16 +232,58 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    // ================== ЗАКРЫТИЕ ВСЕХ ВКЛАДОК ==================
+
+    /** Закрыть все вкладки и открыть одну пустую (Google) */
+    private fun closeAllTabs() {
+        if (tabs.size <= 1 && tabs.firstOrNull()?.url == home) {
+            // Если одна вкладка и она на домашней — просто перезагрузить
+            tabs.firstOrNull()?.webView?.loadUrl(home)
+            Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Уничтожаем все WebView
+        tabs.forEach { tab ->
+            webContainer.removeView(tab.webView)
+            tab.webView.destroy()
+        }
+        tabs.clear()
+
+        // Создаём одну новую
+        addTab(home, animate = true)
+
+        // Анимируем ленту — она "схлопывается"
+        tabStrip.animate()
+            .alpha(0.4f)
+            .setDuration(120)
+            .withEndAction {
+                renderTabStrip()
+                tabStrip.animate().alpha(1f).setDuration(200).start()
+            }
+            .start()
+
+        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
+    }
+
+    /** Диалог подтверждения перед закрытием всех вкладок */
+    private fun confirmCloseAll() {
+        AlertDialog.Builder(this)
+            .setTitle("Закрыть все вкладки?")
+            .setMessage("Будет закрыто вкладок: ${tabs.size}\nОстанется одна пустая.")
+            .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
     // ================== АНИМАЦИИ ==================
 
-    /** При клике на ＋ новая вкладка "выезжает" из кнопки */
     private fun animateNewTabFromButton(button: View) {
         val startX = IntArray(2).also { button.getLocationOnScreen(it) }[0]
         val startY = IntArray(2).also { button.getLocationOnScreen(it) }[1]
         val startW = button.width
         val startH = button.height
 
-        // Летящий "призрак" вкладки, который из кнопки переместится в ленту
         val ghost = TextView(this).apply {
             text = "Новая вкладка"
             setTextColor(Color.WHITE)
@@ -254,7 +301,6 @@ class MainActivity : AppCompatActivity() {
         }
         rootView.addView(ghost, lp)
 
-        // Конечные координаты — начало ленты вкладок
         val endX = IntArray(2).also { tabStrip.getLocationOnScreen(it) }[0] + dp(8)
         val endY = IntArray(2).also { tabStrip.getLocationOnScreen(it) }[1]
 
@@ -277,7 +323,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Пульс кнопки
         button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
             .withEndAction {
                 button.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -296,14 +341,12 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    /** При клике на ⚙ / ☰ — диалог "вырастает" из кнопки */
     private fun animateDialogFromButton(button: View, show: () -> Unit) {
         button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
             .withEndAction {
                 button.animate().scaleX(1f).scaleY(1f).setDuration(200)
                     .setInterpolator(OvershootInterpolator()).start()
             }.start()
-        // Небольшая задержка, чтобы успел проиграть "пульс"
         button.postDelayed({ show() }, 140)
     }
 
@@ -434,7 +477,12 @@ class MainActivity : AppCompatActivity() {
                 setOnLongClickListener {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle(tab.title)
-                        .setItems(arrayOf("Копировать название", "Копировать адрес", "Закрыть вкладку")) { _, which ->
+                        .setItems(arrayOf(
+                            "Копировать название",
+                            "Копировать адрес",
+                            "Закрыть вкладку",
+                            "Закрыть все вкладки"
+                        )) { _, which ->
                             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             when (which) {
                                 0 -> {
@@ -446,6 +494,7 @@ class MainActivity : AppCompatActivity() {
                                     Toast.makeText(this@MainActivity, "Адрес скопирован", Toast.LENGTH_SHORT).show()
                                 }
                                 2 -> closeTab(tab.id)
+                                3 -> confirmCloseAll()
                             }
                         }
                         .show()
@@ -464,48 +513,4 @@ class MainActivity : AppCompatActivity() {
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT).apply {
                 marginEnd = dp(8)
             }
-            tabStrip.addView(pill, lp)
-
-            // Плавное появление каждой пилюли
-            pill.alpha = 0f
-            pill.scaleX = 0.7f
-            pill.scaleY = 0.7f
-            pill.animate()
-                .alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(280)
-                .setInterpolator(OvershootInterpolator())
-                .start()
-        }
-
-        tabsCountBadge.text = tabs.size.toString()
-
-        // Автоскролл к последней вкладке
-        tabStripWrap.post {
-            tabStripWrap.smoothScrollTo(tabStrip.width, 0)
-        }
-    }
-
-    // ================== ДИАЛОГИ (с анимацией появления из центра/снизу) ==================
-
-    private fun showTabsDialog() {
-        val titles = tabs.map {
-            (if (it.id == activeTabId) "● " else "   ") + it.title
-        }.toTypedArray()
-
-        val dlg = AlertDialog.Builder(this)
-            .setTitle("Вкладки (${tabs.size})")
-            .setItems(titles) { _, which ->
-                switchToTab(tabs[which].id)
-            }
-            .setPositiveButton("Новая вкладка") { _, _ -> animateNewTabFromButton(bottomBar) }
-            .setNegativeButton("Закрыть", null)
-            .create()
-        dlg.setOnShowListener {
-            dlg.window?.decorView?.apply {
-                alpha = 0f
-                scaleX = 0.6f
-                scaleY = 0.6f
-                animate().alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(260)
-                    .setInterpolator(OvershootInterpolator())
   
