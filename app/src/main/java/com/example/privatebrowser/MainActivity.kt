@@ -14,6 +14,7 @@ import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -40,6 +41,10 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
 
 class MainActivity : AppCompatActivity() {
@@ -55,6 +60,9 @@ class MainActivity : AppCompatActivity() {
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId = 0
     private var nextTabId = 1
+    private val doh = DohProxy()
+    private val store: Store by lazy { Store(applicationContext) }
+    private val animatedIds = HashSet<Int>()
 
     private val duckUrl = "https://duckduckgo.com/?q="
     private val googleUrl = "https://www.google.com/search?q="
@@ -101,6 +109,19 @@ class MainActivity : AppCompatActivity() {
         b.isClickable = true
         b.isFocusable = true
         return b
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun pressFx(v: View) {
+        v.setOnTouchListener { view, ev ->
+            if (ev.action == MotionEvent.ACTION_DOWN) {
+                view.animate().scaleX(0.9f).scaleY(0.9f).setDuration(80).start()
+            } else if (ev.action == MotionEvent.ACTION_UP || ev.action == MotionEvent.ACTION_CANCEL) {
+                view.animate().scaleX(1f).scaleY(1f).setDuration(160)
+                    .setInterpolator(OvershootInterpolator()).start()
+            }
+            false
+        }
     }
 
     // ---------- lifecycle ----------
@@ -213,13 +234,30 @@ class MainActivity : AppCompatActivity() {
         val newTabBtn = textNavButton("+")
         newTabBtn.setOnClickListener { animateNewTabFromButton(it) }
 
+        val refreshBtn = textNavButton("↻")
+        refreshBtn.setOnClickListener {
+            val t = activeTab
+            if (t != null) {
+                if (t.webView.url == null) t.webView.loadUrl(t.url) else t.webView.reload()
+                it.animate().rotationBy(360f).setDuration(450)
+                    .setInterpolator(DecelerateInterpolator()).start()
+            }
+        }
+
         val settingsBtn = textNavButton("*")
         settingsBtn.setOnClickListener { animateDialogFromButton(it) { showSettingsDialog() } }
 
+        pressFx(tabsBtn)
+        pressFx(newTabBtn)
+        pressFx(refreshBtn)
+        pressFx(settingsBtn)
+
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
         bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
+        bottomBar.addView(refreshBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
+        bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(20), 1))
         bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
 
         root.addView(bottomBar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
@@ -249,7 +287,10 @@ class MainActivity : AppCompatActivity() {
         wipeAll()
 
         val startUrl = intent?.dataString
-        if (startUrl != null) addTab(startUrl, false) else addTab(home, false)
+        startWithDns {
+            restorePinned()
+            if (startUrl != null) addTab(startUrl, false) else addTab(home, false)
+        }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -265,14 +306,48 @@ class MainActivity : AppCompatActivity() {
         if (data != null) addTab(data, true)
     }
 
+    override fun onPause() {
+        savePinned()
+        super.onPause()
+    }
+
     override fun onDestroy() {
         wipeAll()
+        doh.stop()
         for (t in tabs) {
             webContainer.removeView(t.webView)
             t.webView.destroy()
         }
         tabs.clear()
         super.onDestroy()
+    }
+
+    // ---------- DNS (AdGuard / Comss.one через локальный прокси) ----------
+
+    private fun startWithDns(onReady: () -> Unit) {
+        var started = false
+        try {
+            val port = doh.start()
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+                val cfg = ProxyConfig.Builder().addProxyRule("127.0.0.1:" + port).build()
+                ProxyController.getInstance().setProxyOverride(
+                    cfg,
+                    ContextCompat.getMainExecutor(this),
+                    Runnable { onReady() }
+                )
+                started = true
+            }
+        } catch (e: Exception) {
+            started = false
+        }
+        if (!started) {
+            Toast.makeText(
+                this,
+                "DNS-защита недоступна: обновите Android System WebView",
+                Toast.LENGTH_LONG
+            ).show()
+            onReady()
+        }
     }
 
     // ---------- animations ----------
@@ -328,12 +403,6 @@ class MainActivity : AppCompatActivity() {
             ghost.layoutParams = p
         }
 
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
-            .withEndAction {
-                button.animate().scaleX(1f).scaleY(1f).setDuration(180)
-                    .setInterpolator(OvershootInterpolator()).start()
-            }.start()
-
         animX.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(animation: Animator) {
                 ghost.animate().alpha(0f).setDuration(120).withEndAction {
@@ -349,21 +418,24 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun animateDialogFromButton(button: View, show: () -> Unit) {
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(120)
-            .withEndAction {
-                button.animate().scaleX(1f).scaleY(1f).setDuration(200)
-                    .setInterpolator(OvershootInterpolator()).start()
-            }.start()
-        button.postDelayed({ show() }, 140)
+        button.postDelayed({ show() }, 120)
     }
 
     // ---------- tabs ----------
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun addTab(initialUrl: String, animate: Boolean) {
+    private fun addTab(
+        initialUrl: String,
+        animate: Boolean,
+        pinned: Boolean = false,
+        savedTitle: String = "",
+        activate: Boolean = true
+    ) {
         val id = nextTabId
         nextTabId = nextTabId + 1
         val tab = BrowserTab(id)
+        tab.pinned = pinned
+        if (savedTitle.isNotEmpty()) tab.title = savedTitle
 
         val wv = WebView(this)
         wv.setBackgroundColor(Color.parseColor("#0B0F1A"))
@@ -413,6 +485,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(v: WebView, url: String) {
                 val title = v.title
                 if (title != null) tab.title = title else tab.title = url
+                if (tab.pinned) savePinned()
                 renderTabStrip()
             }
         }
@@ -420,8 +493,20 @@ class MainActivity : AppCompatActivity() {
         wv.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(v: WebView, p: Int) {
                 if (tab.id != activeTabId) return
-                bar.progress = p
-                if (p in 1..99) bar.visibility = View.VISIBLE else bar.visibility = View.GONE
+                if (p in 1..99) {
+                    bar.animate().cancel()
+                    bar.alpha = 1f
+                    bar.visibility = View.VISIBLE
+                    bar.setProgress(p, true)
+                } else if (p >= 100) {
+                    bar.setProgress(100, true)
+                    bar.animate().alpha(0f).setDuration(300).setStartDelay(150)
+                        .withEndAction {
+                            bar.visibility = View.GONE
+                            bar.alpha = 1f
+                            bar.progress = 0
+                        }.start()
+                }
             }
 
             override fun onReceivedTitle(v: WebView?, title: String?) {
@@ -437,8 +522,12 @@ class MainActivity : AppCompatActivity() {
         tabs.add(tab)
         webContainer.addView(wv, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
 
-        switchToTab(tab.id, animate)
-        wv.loadUrl(initialUrl)
+        if (activate) {
+            switchToTab(tab.id, animate)
+            wv.loadUrl(initialUrl)
+        } else {
+            tab.needsLoad = true
+        }
         renderTabStrip()
     }
 
@@ -447,13 +536,17 @@ class MainActivity : AppCompatActivity() {
         for (t in tabs) {
             if (t.id == id) {
                 t.webView.visibility = View.VISIBLE
+                if (t.needsLoad) {
+                    t.needsLoad = false
+                    t.webView.loadUrl(t.url)
+                }
                 if (animate) {
                     t.webView.alpha = 0f
                     t.webView.animate().alpha(1f).setDuration(220).start()
                 }
             } else {
-                t.webView.visibility = View.GONE
-            }
+                          }
+        
         }
         val t = activeTab
         if (t != null && !urlBox.hasFocus()) urlBox.setText(t.url)
@@ -467,6 +560,7 @@ class MainActivity : AppCompatActivity() {
         webContainer.removeView(target.webView)
         target.webView.destroy()
         tabs.remove(target)
+        if (target.pinned) savePinned()
 
         if (tabs.isEmpty()) {
             addTab(home, false)
@@ -477,19 +571,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeAllTabs() {
-        for (t in tabs) {
+        val toClose = ArrayList<BrowserTab>()
+        for (t in tabs) if (!t.pinned) toClose.add(t)
+        for (t in toClose) {
             webContainer.removeView(t.webView)
             t.webView.destroy()
+            tabs.remove(t)
         }
-        tabs.clear()
         addTab(home, true)
-        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Вкладки закрыты", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmCloseAll() {
+        var count = 0
+        for (t in tabs) if (!t.pinned) count = count + 1
         AlertDialog.Builder(this)
             .setTitle("Закрыть все вкладки?")
-            .setMessage("Будет закрыто вкладок: " + tabs.size)
+            .setMessage("Будет закрыто вкладок: " + count + " (закреплённые останутся)")
             .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
             .setNegativeButton("Отмена", null)
             .show()
@@ -497,6 +595,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun renderTabStrip() {
         tabStrip.removeAllViews()
+        var activePill: View? = null
         for (tab in tabs) {
             val isActive = tab.id == activeTabId
 
@@ -518,6 +617,7 @@ class MainActivity : AppCompatActivity() {
             val titleView = TextView(this)
             var title = tab.title
             if (title.length > 18) title = title.substring(0, 18) + "..."
+            if (tab.pinned) title = "📌 " + title
             titleView.text = title
             titleView.setTextColor(Color.WHITE)
             titleView.textSize = 13f
@@ -527,133 +627,18 @@ class MainActivity : AppCompatActivity() {
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
             lp.marginEnd = dp(8)
             tabStrip.addView(pill, lp)
+            if (isActive) activePill = pill
 
-            pill.alpha = 0f
-            pill.scaleX = 0.7f
-            pill.scaleY = 0.7f
-            pill.animate()
-                .alpha(1f).scaleX(1f).scaleY(1f)
-                .setDuration(280)
-                .setInterpolator(OvershootInterpolator())
-                .start()
-        }
-
-        tabsCountBadge.text = tabs.size.toString()
-
-        tabStripWrap.post {
-            tabStripWrap.smoothScrollTo(tabStrip.width, 0)
-        }
-    }
-
-    private fun showTabMenu(tab: BrowserTab) {
-        val items = arrayOf(              
-            "Копировать название",
-            "Копировать адрес",
-            "Закрыть вкладку",
-            "Закрыть все вкладки"
-        )
-        AlertDialog.Builder(this)
-            .setTitle(tab.title)
-            .setItems(items) { _, which ->
-                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                if (which == 0) {
-                    cm.setPrimaryClip(ClipData.newPlainText("title", tab.title))
-                    Toast.makeText(this, "Название скопировано", Toast.LENGTH_SHORT).show()
-                } else if (which == 1) {
-                    cm.setPrimaryClip(ClipData.newPlainText("url", tab.url))
-                    Toast.makeText(this, "Адрес скопирован", Toast.LENGTH_SHORT).show()
-                } else if (which == 2) {
-                    closeTab(tab.id)
-                } else if (which == 3) {
-                    confirmCloseAll()
-                }
+            // Анимация появления только у новых вкладок, остальные не мигают
+            if (!animatedIds.contains(tab.id)) {
+                animatedIds.add(tab.id)
+                pill.alpha = 0f
+                pill.scaleX = 0.7f
+                pill.scaleY = 0.7f
+                pill.animate()
+                    .alpha(1f).scaleX(1f).scaleY(1f)
+                    .setDuration(280)
+                    .setInterpolator(OvershootInterpolator())
+                    .start()
             }
-            .show()
-    }
-
-    private fun showTabsDialog() {
-        val titles = ArrayList<String>()
-        for (tab in tabs) {
-            val prefix = if (tab.id == activeTabId) "● " else "   "
-            titles.add(prefix + tab.title)
         }
-
-        AlertDialog.Builder(this)
-            .setTitle("Вкладки (" + tabs.size + ")")
-            .setItems(titles.toTypedArray()) { _, which ->
-                switchToTab(tabs[which].id, true)
-            }
-            .setPositiveButton("Новая вкладка") { _, _ -> addTab(home, true) }
-            .setNeutralButton("Закрыть все") { _, _ -> confirmCloseAll() }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    // ---------- settings ----------
-
-    private fun showSettingsDialog() {
-        val engine = if (searchUrl == googleUrl) "Google" else "DuckDuckGo"
-        val items = arrayOf(
-            "Стереть куки и кеш",
-            "Закрыть все вкладки",
-            "Поисковик: " + engine + " (сменить)",
-            "О браузере"
-        )
-        AlertDialog.Builder(this)
-            .setTitle("Настройки")
-            .setItems(items) { _, which ->
-                if (which == 0) {
-                    wipeAll()
-                    Toast.makeText(this, "Данные стёрты", Toast.LENGTH_SHORT).show()
-                } else if (which == 1) {
-                    confirmCloseAll()
-                } else if (which == 2) {
-                    if (searchUrl == googleUrl) searchUrl = duckUrl else searchUrl = googleUrl
-                    val now = if (searchUrl == googleUrl) "Google" else "DuckDuckGo"
-                    Toast.makeText(this, "Поисковик: " + now, Toast.LENGTH_SHORT).show()
-                } else {
-                    AlertDialog.Builder(this)
-                        .setTitle("Приватный браузер")
-                        .setMessage(
-                            "Движок Chromium (Android WebView). История, кеш и куки " +
-                                "стираются при закрытии. Скриншоты запрещены, " +
-                                "популярные трекеры блокируются, http переводится на https."
-                        )
-                        .setPositiveButton("OK", null)
-                        .show()
-                }
-            }
-            .setNegativeButton("Закрыть", null)
-            .show()
-    }
-
-    // ---------- navigation and cleanup ----------
-
-    private fun open(input: String) {
-        val t = input.trim()
-        if (t.isEmpty()) return
-        val target: String
-        if (t.startsWith("https://")) {
-            target = t
-        } else if (t.startsWith("http://")) {
-            target = "https://" + t.removePrefix("http://")
-        } else if (!t.contains(" ") && t.contains(".")) {
-            target = "https://" + t
-        } else {
-            target = searchUrl + android.net.Uri.encode(t)
-        }
-        urlBox.clearFocus()
-        val tab = activeTab
-        if (tab != null) tab.webView.loadUrl(target)
-    }
-
-    private fun wipeAll() {
-        CookieManager.getInstance().removeAllCookies(null)
-        CookieManager.getInstance().flush()
-        WebStorage.getInstance().deleteAllData()
-        for (t in tabs) {
-            t.webView.clearCache(true)
-            t.webView.clearHistory()
-        }
-    }
-}
