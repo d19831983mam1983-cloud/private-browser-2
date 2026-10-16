@@ -1,5 +1,8 @@
 package com.example.privatebrowser
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -65,7 +68,10 @@ class MainActivity : AppCompatActivity() {
     )
 
     private val activeTab: BrowserTab?
-        get() = tabs.firstOrNull { it.id == activeTabId }
+        get() {
+            for (t in tabs) if (t.id == activeTabId) return t
+            return null
+        }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -77,42 +83,39 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0B0F1A"))
-            fitsSystemWindows = true
-        }
+        val root = LinearLayout(this)
+        root.orientation = LinearLayout.VERTICAL
+        root.setBackgroundColor(Color.parseColor("#0B0F1A"))
+        root.fitsSystemWindows = true
 
-        val topBlock = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), dp(10), dp(10), dp(8))
-            background = gradientGlass(dp(0))
-            elevation = dp(8).toFloat()
-        }
+        val topBlock = LinearLayout(this)
+        topBlock.orientation = LinearLayout.VERTICAL
+        topBlock.setPadding(dp(10), dp(10), dp(10), dp(8))
+        topBlock.background = gradientGlass(dp(0))
+        topBlock.elevation = dp(8).toFloat()
 
-        val urlRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = gradientGlass(dp(26))
-            setPadding(dp(6), dp(6), dp(6), dp(6))
-            elevation = dp(6).toFloat()
-        }
+        val urlRow = LinearLayout(this)
+        urlRow.orientation = LinearLayout.HORIZONTAL
+        urlRow.gravity = Gravity.CENTER_VERTICAL
+        urlRow.background = gradientGlass(dp(26))
+        urlRow.setPadding(dp(6), dp(6), dp(6), dp(6))
+        urlRow.elevation = dp(6).toFloat()
 
-        urlBox = EditText(this).apply {
-            hint = "Поиск или адрес"
-            setHintTextColor(Color.parseColor("#CCFFFFFF"))
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setSingleLine()
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = gradientGlass(dp(22))
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            imeOptions = EditorInfo.IME_ACTION_GO
-            setOnEditorActionListener { _, actionId, _ ->
-                if (actionId == EditorInfo.IME_ACTION_GO) {
-                    open(text.toString()); true
-                } else false
-            }
+        urlBox = EditText(this)
+        urlBox.hint = "Поиск или адрес"
+        urlBox.setHintTextColor(Color.parseColor("#CCFFFFFF"))
+        urlBox.setTextColor(Color.WHITE)
+        urlBox.textSize = 15f
+        urlBox.setSingleLine()
+        urlBox.setPadding(dp(14), dp(10), dp(14), dp(10))
+        urlBox.background = gradientGlass(dp(22))
+        urlBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        urlBox.imeOptions = EditorInfo.IME_ACTION_GO
+        urlBox.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO) {
+                open(urlBox.text.toString())
+                true
+            } else false
         }
         urlBox.setOnLongClickListener {
             val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -124,27 +127,21 @@ class MainActivity : AppCompatActivity() {
 
         topBlock.addView(urlRow, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
-        bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100
-            visibility = View.GONE
-            progressTintList = android.content.res.ColorStateList.valueOf(
-                Color.parseColor("#5B8DEF")
-            )
-        }
-        topBlock.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, dp(2)).apply {
-            topMargin = dp(4)
-            marginStart = dp(14)
-            marginEnd = dp(14)
-        })
+        bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
+        bar.max = 100
+        bar.visibility = View.GONE
+        bar.progressTintList = android.content.res.ColorStateList.valueOf(
+            Color.parseColor("#5B8DEF")
+        )
+        topBlock.addView(bar, LinearLayout.LayoutParams(MATCH_PARENT, dp(2)))
 
-        tabStripWrap = HorizontalScrollView(this).apply {
-            isHorizontalScrollBarEnabled = false
-            setPadding(0, dp(8), 0, 0)
-        }
-        tabStrip = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        tabStripWrap = HorizontalScrollView(this)
+        tabStripWrap.isHorizontalScrollBarEnabled = false
+        tabStripWrap.setPadding(0, dp(8), 0, 0)
+
+        tabStrip = LinearLayout(this)
+        tabStrip.orientation = LinearLayout.HORIZONTAL
+        tabStrip.gravity = Gravity.CENTER_VERTICAL
         tabStripWrap.addView(tabStrip)
         topBlock.addView(tabStripWrap, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
 
@@ -153,15 +150,15 @@ class MainActivity : AppCompatActivity() {
         webContainer = FrameLayout(this)
         root.addView(webContainer, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
 
-        bottomBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            background = gradientGlass(dp(0))
-            elevation = dp(10).toFloat()
-        }
+        bottomBar = LinearLayout(this)
+        bottomBar.orientation = LinearLayout.HORIZONTAL
+        bottomBar.gravity = Gravity.CENTER
+        bottomBar.setPadding(dp(16), dp(10), dp(16), dp(10))
+        bottomBar.background = gradientGlass(dp(0))
+        bottomBar.elevation = dp(10).toFloat()
 
-        val tabsBtn = textNavButton("[=]") { showTabsDialog() }
+        val tabsBtn = textNavButton("[=]")
+        tabsBtn.setOnClickListener { showTabsDialog() }
         tabsBtn.setOnLongClickListener {
             confirmCloseAll()
             true
@@ -169,22 +166,23 @@ class MainActivity : AppCompatActivity() {
 
         val tabsWrapper = FrameLayout(this)
         tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
-        tabsCountBadge = TextView(this).apply {
-            setTextColor(Color.WHITE)
-            textSize = 10f
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#5B8DEF"))
-            }
-            setPadding(dp(4), dp(1), dp(4), dp(1))
-        }
-        tabsWrapper.addView(tabsCountBadge, FrameLayout.LayoutParams(dp(20), dp(20)).apply {
-            gravity = Gravity.TOP or Gravity.END
-        })
+        tabsCountBadge = TextView(this)
+        tabsCountBadge.setTextColor(Color.WHITE)
+        tabsCountBadge.textSize = 10f
+        tabsCountBadge.gravity = Gravity.CENTER
+        val badgeBg = GradientDrawable()
+        badgeBg.shape = GradientDrawable.OVAL
+        badgeBg.setColor(Color.parseColor("#5B8DEF"))
+        tabsCountBadge.background = badgeBg
+        val badgeLp = FrameLayout.LayoutParams(dp(20), dp(20))
+        badgeLp.gravity = Gravity.TOP or Gravity.END
+        tabsWrapper.addView(tabsCountBadge, badgeLp)
 
-        val newTabBtn = textNavButton("+") { animateNewTabFromButton(it) }
-        val settingsBtn = textNavButton("*") { animateDialogFromButton(it) { showSettingsDialog() } }
+        val newTabBtn = textNavButton("+")
+        newTabBtn.setOnClickListener { animateNewTabFromButton(it) }
+
+        val settingsBtn = textNavButton("*")
+        settingsBtn.setOnClickListener { animateDialogFromButton(it) { showSettingsDialog() } }
 
         bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
         bottomBar.addView(View(this), LinearLayout.LayoutParams(dp(32), 1))
@@ -215,7 +213,7 @@ class MainActivity : AppCompatActivity() {
             .setInterpolator(DecelerateInterpolator())
             .start()
 
-        addTab(home, animate = false)
+        addTab(home, false)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
@@ -223,25 +221,6 @@ class MainActivity : AppCompatActivity() {
                 if (t != null && t.webView.canGoBack()) t.webView.goBack() else finish()
             }
         })
-    }
-
-    private fun closeAllTabs() {
-        tabs.forEach { tab ->
-            webContainer.removeView(tab.webView)
-            tab.webView.destroy()
-        }
-        tabs.clear()
-        addTab(home, animate = true)
-        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun confirmCloseAll() {
-        AlertDialog.Builder(this)
-            .setTitle("Закрыть все вкладки?")
-            .setMessage("Будет закрыто вкладок: " + tabs.size)
-            .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
-            .setNegativeButton("Отмена", null)
-            .show()
     }
 
     private fun animateNewTabFromButton(button: View) {
@@ -252,16 +231,16 @@ class MainActivity : AppCompatActivity() {
         val startW = button.width
         val startH = button.height
 
-        val ghost = TextView(this).apply {
-            text = "Новая вкладка"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), 0, dp(14), 0)
-            background = resources.getDrawable(R.drawable.bg_tab_active, theme)
-            alpha = 0.95f
-            elevation = dp(12).toFloat()
-        }
+        val ghost = TextView(this)
+        ghost.text = "Новая вкладка"
+        ghost.setTextColor(Color.WHITE)
+        ghost.textSize = 13f
+        ghost.gravity = Gravity.CENTER_VERTICAL
+        ghost.setPadding(dp(14), 0, dp(14), 0)
+        ghost.background = resources.getDrawable(R.drawable.bg_tab_active, theme)
+        ghost.alpha = 0.95f
+        ghost.elevation = dp(12).toFloat()
+
         val rootView = window.decorView as ViewGroup
         val lp = FrameLayout.LayoutParams(startW, startH)
         lp.leftMargin = startX
@@ -273,17 +252,21 @@ class MainActivity : AppCompatActivity() {
         val endX = endLoc[0] + dp(8)
         val endY = endLoc[1]
 
-        val animX = android.animation.ValueAnimator.ofInt(startX, endX)
+        val animX = ValueAnimator.ofInt(startX, endX)
         animX.duration = 420
         animX.interpolator = DecelerateInterpolator()
-        animX.addUpdateListener { ghost.translationX = ((it.animatedValue as Int) - startX).toFloat() }
+        animX.addUpdateListener {
+            ghost.translationX = ((it.animatedValue as Int) - startX).toFloat()
+        }
 
-        val animY = android.animation.ValueAnimator.ofInt(startY, endY)
+        val animY = ValueAnimator.ofInt(startY, endY)
         animY.duration = 420
         animY.interpolator = DecelerateInterpolator()
-        animY.addUpdateListener { ghost.translationY = ((it.animatedValue as Int) - startY).toFloat() }
+        animY.addUpdateListener {
+            ghost.translationY = ((it.animatedValue as Int) - startY).toFloat()
+        }
 
-        val animW = android.animation.ValueAnimator.ofInt(startW, dp(140))
+        val animW = ValueAnimator.ofInt(startW, dp(140))
         animW.duration = 420
         animW.addUpdateListener {
             val p = ghost.layoutParams as FrameLayout.LayoutParams
@@ -301,12 +284,12 @@ class MainActivity : AppCompatActivity() {
         animY.start()
         animW.start()
 
-        animX.addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: android.animation.Animator) {
+        animX.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
                 ghost.animate().alpha(0f).setDuration(120).withEndAction {
                     rootView.removeView(ghost)
                 }.start()
-                addTab(home, animate = true)
+                addTab(home, true)
             }
         })
     }
@@ -322,25 +305,22 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun addTab(initialUrl: String, animate: Boolean) {
-        val tab = BrowserTab(nextTabId)
+        val id = nextTabId
+        nextTabId = nextTabId + 1
+        val tab = BrowserTab(id)
 
-        val wv = WebView(this).apply {
-            setBackgroundColor(Color.parseColor("#0B0F1A"))
-            settings.apply {
-                javaScriptEnabled = true
-                domStorageEnabled = true
-                cacheMode = WebSettings.LOAD_NO_CACHE
-                allowFileAccess = false
-                allowContentAccess = false
-                setGeolocationEnabled(false)
-                mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                @Suppress("DEPRECATION")
-                saveFormData = false
-            }
-            CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
-            visibility = View.GONE
-        }
-        nextTabId++
+        val wv = WebView(this)
+        wv.setBackgroundColor(Color.parseColor("#0B0F1A"))
+        wv.settings.javaScriptEnabled = true
+        wv.settings.domStorageEnabled = true
+        wv.settings.cacheMode = WebSettings.LOAD_NO_CACHE
+        wv.settings.allowFileAccess = false
+        wv.settings.allowContentAccess = false
+        wv.settings.setGeolocationEnabled(false)
+        wv.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        wv.settings.saveFormData = false
+        CookieManager.getInstance().setAcceptThirdPartyCookies(wv, false)
+        wv.visibility = View.GONE
 
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean {
@@ -374,7 +354,8 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onPageFinished(v: WebView, url: String) {
-                tab.title = v.title ?: url
+                val title = v.title
+                if (title != null) tab.title = title else tab.title = url
                 renderTabStrip()
             }
         }
@@ -383,7 +364,7 @@ class MainActivity : AppCompatActivity() {
             override fun onProgressChanged(v: WebView, p: Int) {
                 if (tab.id != activeTabId) return
                 bar.progress = p
-                bar.visibility = if (p in 1..99) View.VISIBLE else View.GONE
+                if (p in 1..99) bar.visibility = View.VISIBLE else bar.visibility = View.GONE
             }
 
             override fun onReceivedTitle(v: WebView?, title: String?) {
@@ -406,11 +387,14 @@ class MainActivity : AppCompatActivity() {
     private fun switchToTab(id: Int, animate: Boolean) {
         activeTabId = id
         for (t in tabs) {
-            val show = t.id == id
-            t.webView.visibility = if (show) View.VISIBLE else View.GONE
-            if (show && animate) {
-                t.webView.alpha = 0f
-                t.webView.animate().alpha(1f).setDuration(220).start()
+            if (t.id == id) {
+                t.webView.visibility = View.VISIBLE
+                if (animate) {
+                    t.webView.alpha = 0f
+                    t.webView.animate().alpha(1f).setDuration(220).start()
+                }
+            } else {
+                t.webView.visibility = View.GONE
             }
         }
         val t = activeTab
@@ -419,10 +403,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeTab(id: Int) {
-        val t = tabs.firstOrNull { it.id == id } ?: return
-        webContainer.removeView(t.webView)
-        t.webView.destroy()
-        tabs.remove(t)
+        var target: BrowserTab? = null
+        for (t in tabs) if (t.id == id) target = t
+        if (target == null) return
+        webContainer.removeView(target.webView)
+        target.webView.destroy()
+        tabs.remove(target)
 
         if (tabs.isEmpty()) {
             addTab(home, false)
@@ -432,33 +418,52 @@ class MainActivity : AppCompatActivity() {
         renderTabStrip()
     }
 
+    private fun closeAllTabs() {
+        for (t in tabs) {
+            webContainer.removeView(t.webView)
+            t.webView.destroy()
+        }
+        tabs.clear()
+        addTab(home, true)
+        Toast.makeText(this, "Все вкладки закрыты", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun confirmCloseAll() {
+        AlertDialog.Builder(this)
+            .setTitle("Закрыть все вкладки?")
+            .setMessage("Будет закрыто вкладок: " + tabs.size)
+            .setPositiveButton("Закрыть все") { _, _ -> closeAllTabs() }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
     private fun renderTabStrip() {
         tabStrip.removeAllViews()
         for (tab in tabs) {
             val isActive = tab.id == activeTabId
 
-            val pill = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = resources.getDrawable(
-                    if (isActive) R.drawable.bg_tab_active else R.drawable.bg_tab_inactive,
-                    theme
-                )
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                setOnClickListener { switchToTab(tab.id, true) }
-                setOnLongClickListener {
-                    showTabMenu(tab)
-                    true
-                }
+            val pill = LinearLayout(this)
+            pill.orientation = LinearLayout.HORIZONTAL
+            pill.gravity = Gravity.CENTER_VERTICAL
+            if (isActive) {
+                pill.background = resources.getDrawable(R.drawable.bg_tab_active, theme)
+            } else {
+                pill.background = resources.getDrawable(R.drawable.bg_tab_inactive, theme)
+            }
+            pill.setPadding(dp(14), dp(8), dp(14), dp(8))
+            pill.setOnClickListener { switchToTab(tab.id, true) }
+            pill.setOnLongClickListener {
+                showTabMenu(tab)
+                true
             }
 
-            val titleView = TextView(this).apply {
-                val t = if (tab.title.length > 18) tab.title.substring(0, 18) + "..." else tab.title
-                text = t
-                setTextColor(Color.WHITE)
-                textSize = 13f
-                maxLines = 1
-            }
+            val titleView = TextView(this)
+            var title = tab.title
+            if (title.length > 18) title = title.substring(0, 18) + "..."
+            titleView.text = title
+            titleView.setTextColor(Color.WHITE)
+            titleView.textSize = 13f
+            titleView.maxLines = 1
             pill.addView(titleView)
 
             val lp = LinearLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT)
@@ -527,11 +532,3 @@ class MainActivity : AppCompatActivity() {
         dlg.setOnShowListener {
             val dv = dlg.window?.decorView
             if (dv != null) {
-                dv.alpha = 0f
-                dv.scaleX = 0.6f
-                dv.scaleY = 0.6f
-                dv.animate().alpha(1f).scaleX(1f).scaleY(1f)
-                    .setDuration(260)
-                    .setInterpolator(OvershootInterpolator())
-                    .start()
-            
