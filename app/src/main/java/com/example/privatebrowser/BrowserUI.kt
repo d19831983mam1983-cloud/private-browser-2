@@ -4,8 +4,14 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -50,13 +56,13 @@ class BrowserUI(private val ctx: Context) {
         topBlock = LinearLayout(ctx)
         topBlock.orientation = LinearLayout.VERTICAL
         topBlock.setPadding(dp(10), dp(10), dp(10), dp(8))
-        topBlock.background = gradientGlass(0)
-        topBlock.elevation = dp(8).toFloat()
+        topBlock.background = liquidGlassPanel(0, true)
+        topBlock.elevation = dp(10).toFloat()
 
         val urlRow = LinearLayout(ctx)
         urlRow.orientation = LinearLayout.HORIZONTAL
         urlRow.gravity = Gravity.CENTER_VERTICAL
-        urlRow.background = gradientGlass(26)
+        urlRow.background = liquidGlassPill(26)
         urlRow.setPadding(dp(6), dp(6), dp(6), dp(6))
         urlRow.elevation = dp(6).toFloat()
 
@@ -66,8 +72,8 @@ class BrowserUI(private val ctx: Context) {
         urlBox.setTextColor(Color.WHITE)
         urlBox.textSize = 15f
         urlBox.setSingleLine()
-        urlBox.setPadding(dp(14), dp(10), dp(14), dp(10))
-        urlBox.background = gradientGlass(22)
+        urlBox.setPadding(dp(16), dp(10), dp(16), dp(10))
+        urlBox.background = liquidGlassPill(22)
         urlBox.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
         urlBox.imeOptions = EditorInfo.IME_ACTION_GO
         urlBox.setOnEditorActionListener { _, a, _ ->
@@ -85,7 +91,7 @@ class BrowserUI(private val ctx: Context) {
 
         tabStripWrap = HorizontalScrollView(ctx)
         tabStripWrap.isHorizontalScrollBarEnabled = false
-        tabStripWrap.setPadding(0, dp(8), 0, 0)
+        tabStripWrap.setPadding(0, dp(10), 0, 0)
 
         tabStrip = LinearLayout(ctx)
         tabStrip.orientation = LinearLayout.HORIZONTAL
@@ -100,16 +106,16 @@ class BrowserUI(private val ctx: Context) {
         bottomBar = LinearLayout(ctx)
         bottomBar.orientation = LinearLayout.HORIZONTAL
         bottomBar.gravity = Gravity.CENTER
-        bottomBar.setPadding(dp(16), dp(10), dp(16), dp(10))
-        bottomBar.background = gradientGlass(0)
-        bottomBar.elevation = dp(10).toFloat()
+        bottomBar.setPadding(dp(18), dp(12), dp(18), dp(12))
+        bottomBar.background = liquidGlassPanel(0, false)
+        bottomBar.elevation = dp(12).toFloat()
 
-        val tabsBtn = textNavButton("[=]")
+        val tabsBtn = liquidButton("[=]")
         tabsBtn.setOnClickListener { onTabsDialog?.invoke() }
         tabsBtn.setOnLongClickListener { onConfirmCloseAll?.invoke(); true }
 
         val tabsWrapper = FrameLayout(ctx)
-        tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(56), dp(56)))
+        tabsWrapper.addView(tabsBtn, FrameLayout.LayoutParams(dp(58), dp(58)))
         tabsCountBadge = TextView(ctx)
         tabsCountBadge.setTextColor(Color.WHITE)
         tabsCountBadge.textSize = 10f
@@ -122,16 +128,16 @@ class BrowserUI(private val ctx: Context) {
         blp.gravity = Gravity.TOP or Gravity.END
         tabsWrapper.addView(tabsCountBadge, blp)
 
-        val newTabBtn = textNavButton("+")
+        val newTabBtn = liquidButton("+")
         newTabBtn.setOnClickListener { onNewTab?.invoke(it) }
-        val settingsBtn = textNavButton("*")
+        val settingsBtn = liquidButton("*")
         settingsBtn.setOnClickListener { onSettings?.invoke(it) }
 
-        bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(dp(32), 1))
-        bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
-        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(dp(32), 1))
-        bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(56), dp(56)))
+        bottomBar.addView(tabsWrapper, LinearLayout.LayoutParams(dp(58), dp(58)))
+        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(dp(36), 1))
+        bottomBar.addView(newTabBtn, LinearLayout.LayoutParams(dp(58), dp(58)))
+        bottomBar.addView(View(ctx), LinearLayout.LayoutParams(dp(36), 1))
+        bottomBar.addView(settingsBtn, LinearLayout.LayoutParams(dp(58), dp(58)))
         root.addView(bottomBar, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         return root
     }
@@ -139,12 +145,14 @@ class BrowserUI(private val ctx: Context) {
     fun animatePanelsIn() {
         topBlock.alpha = 0f
         topBlock.translationY = -dp(60).toFloat()
-        topBlock.animate().alpha(1f).translationY(0f).setDuration(1000)
+        topBlock.animate().alpha(1f).translationY(0f)
+            .setDuration(1200)
             .setInterpolator(DecelerateInterpolator()).start()
         bottomBar.alpha = 0f
         bottomBar.translationY = dp(60).toFloat()
-        bottomBar.animate().alpha(1f).translationY(0f).setDuration(1000)
-            .setStartDelay(240).setInterpolator(DecelerateInterpolator()).start()
+        bottomBar.animate().alpha(1f).translationY(0f)
+            .setDuration(1200).setStartDelay(260)
+            .setInterpolator(DecelerateInterpolator()).start()
     }
 
     fun animateNewTabGhost(button: View, onDone: () -> Unit) {
@@ -156,47 +164,56 @@ class BrowserUI(private val ctx: Context) {
         ghost.setTextColor(Color.WHITE)
         ghost.textSize = 13f
         ghost.gravity = Gravity.CENTER_VERTICAL
-        ghost.setPadding(dp(14), 0, dp(14), 0)
-        ghost.background = ctx.resources.getDrawable(R.drawable.bg_tab_active, null)
+        ghost.setPadding(dp(16), 0, dp(16), 0)
+        ghost.background = liquidGlassPill(22)
         ghost.alpha = 0.95f
-        ghost.elevation = dp(12).toFloat()
+        ghost.elevation = dp(14).toFloat()
 
         val rv = button.rootView as ViewGroup
         val lp = FrameLayout.LayoutParams(sw, sh)
         lp.leftMargin = sx; lp.topMargin = sy
         rv.addView(ghost, lp)
 
-        val e = IntArray(2); tabStrip.getLocationOnScreen(e)
-        val ex = e[0] + dp(8); val ey = e[1]
+        val endLoc = IntArray(2); tabStrip.getLocationOnScreen(endLoc)
+        val endX = endLoc[0] + tabStrip.width + dp(6)
+        val endY = endLoc[1]
 
-        val ax = ValueAnimator.ofInt(sx, ex)
-        ax.duration = 840
+        val ax = ValueAnimator.ofInt(sx, endX)
+        ax.duration = 900
         ax.interpolator = DecelerateInterpolator()
         ax.addUpdateListener { ghost.translationX = ((it.animatedValue as Int) - sx).toFloat() }
 
-        val ay = ValueAnimator.ofInt(sy, ey)
-        ay.duration = 840
+        val ay = ValueAnimator.ofInt(sy, endY)
+        ay.duration = 900
         ay.interpolator = DecelerateInterpolator()
         ay.addUpdateListener { ghost.translationY = ((it.animatedValue as Int) - sy).toFloat() }
 
-        val aw = ValueAnimator.ofInt(sw, dp(140))
-        aw.duration = 840
+        val aw = ValueAnimator.ofInt((sw * 1.4f).toInt(), dp(140))
+        aw.duration = 900
         aw.addUpdateListener {
             val p = ghost.layoutParams as FrameLayout.LayoutParams
             p.width = it.animatedValue as Int
             ghost.layoutParams = p
         }
 
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(240).withEndAction {
-            button.animate().scaleX(1f).scaleY(1f).setDuration(360)
+        val ah = ValueAnimator.ofFloat(1.0f, 1.15f, 1.0f)
+        ah.duration = 900
+        ah.addUpdateListener {
+            val k = it.animatedValue as Float
+            ghost.scaleY = k
+            ghost.scaleX = 1f / k
+        }
+
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(260).withEndAction {
+            button.animate().scaleX(1f).scaleY(1f).setDuration(460)
                 .setInterpolator(OvershootInterpolator()).start()
         }.start()
 
-        ax.start(); ay.start(); aw.start()
+        ax.start(); ay.start(); aw.start(); ah.start()
 
         ax.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(a: Animator) {
-                ghost.animate().alpha(0f).setDuration(240).withEndAction {
+                ghost.animate().alpha(0f).setDuration(260).withEndAction {
                     rv.removeView(ghost); onDone()
                 }.start()
             }
@@ -204,54 +221,180 @@ class BrowserUI(private val ctx: Context) {
     }
 
     fun pulseButton(button: View, after: () -> Unit) {
-        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(240).withEndAction {
-            button.animate().scaleX(1f).scaleY(1f).setDuration(400)
+        button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(260).withEndAction {
+            button.animate().scaleX(1f).scaleY(1f).setDuration(460)
                 .setInterpolator(OvershootInterpolator()).start()
         }.start()
-        button.postDelayed({ after() }, 280)
+        button.postDelayed({ after() }, 300)
     }
 
     fun makeTabPill(isActive: Boolean): LinearLayout {
         val pill = LinearLayout(ctx)
         pill.orientation = LinearLayout.HORIZONTAL
         pill.gravity = Gravity.CENTER_VERTICAL
-        val r = if (isActive) R.drawable.bg_tab_active else R.drawable.bg_tab_inactive
-        pill.background = ctx.resources.getDrawable(r, null)
-        pill.setPadding(dp(14), dp(8), dp(14), dp(8))
+        pill.background = if (isActive) liquidGlassPill(22) else liquidGlassPillDim(22)
+        pill.setPadding(dp(16), dp(8), dp(16), dp(8))
         return pill
     }
 
     fun animatePillIn(pill: View) {
-        pill.alpha = 0f; pill.scaleX = 0.7f; pill.scaleY = 0.7f
+        pill.alpha = 0f
+        pill.scaleX = 0.6f
+        pill.scaleY = 0.6f
         pill.animate().alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(560).setInterpolator(OvershootInterpolator()).start()
+            .setDuration(620)
+            .setInterpolator(OvershootInterpolator()).start()
     }
 
     fun dp(v: Int): Int = (v * ctx.resources.displayMetrics.density).toInt()
 
-    private fun textNavButton(symbol: String): TextView {
+    private fun liquidButton(symbol: String): TextView {
         val tv = TextView(ctx)
         tv.text = symbol
         tv.setTextColor(Color.WHITE)
         tv.textSize = 20f
         tv.gravity = Gravity.CENTER
-        val bg = GradientDrawable(
-            GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.parseColor("#66FFFFFF"), Color.parseColor("#33FFFFFF"))
-        )
-        bg.shape = GradientDrawable.OVAL
-        bg.setStroke(dp(1), Color.parseColor("#88FFFFFF"))
-        tv.background = bg
+        tv.background = liquidGlassCircle()
+        tv.elevation = dp(6).toFloat()
         return tv
     }
 
-    private fun gradientGlass(r: Int): GradientDrawable {
-        val g = GradientDrawable(
-            GradientDrawable.Orientation.TL_BR,
-            intArrayOf(Color.parseColor("#66FFFFFF"), Color.parseColor("#33FFFFFF"), Color.parseColor("#22FFFFFF"))
+    private fun liquidGlassCircle(): LayerDrawable {
+        val size = dp(58)
+        val base = object : GradientDrawable() {
+            override fun draw(canvas: Canvas) {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                val r = bounds.width() / 2f
+                val cx = bounds.exactCenterX()
+                val cy = bounds.exactCenterY()
+                val shader = RadialGradient(
+                    cx, cy - r * 0.25f, r * 1.15f,
+                    intArrayOf(
+                        Color.parseColor("#AAFFFFFF"),
+                        Color.parseColor("#55FFFFFF"),
+                        Color.parseColor("#22FFFFFF"),
+                        Color.parseColor("#11FFFFFF")
+                    ),
+                    floatArrayOf(0f, 0.45f, 0.8f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+                p.shader = shader
+                canvas.drawCircle(cx, cy, r, p)
+                val stroke = Paint(Paint.ANTI_ALIAS_FLAG)
+                stroke.style = Paint.Style.STROKE
+                stroke.strokeWidth = dp(1).toFloat()
+                stroke.color = Color.parseColor("#99FFFFFF")
+                canvas.drawCircle(cx, cy, r - dp(1) / 2f, stroke)
+                val inner = Paint(Paint.ANTI_ALIAS_FLAG)
+                inner.style = Paint.Style.STROKE
+                inner.strokeWidth = dp(1).toFloat()
+                inner.color = Color.parseColor("#44FFFFFF")
+                canvas.drawCircle(cx, cy, r - dp(3), inner)
+            }
+        }
+        base.shape = GradientDrawable.OVAL
+        base.setSize(size, size)
+        val layer = LayerDrawable(arrayOf(base))
+        layer.setLayerSize(0, size, size)
+        return layer
+    }
+
+    private fun liquidGlassPill(radiusDp: Int): LayerDrawable {
+        val radius = dp(radiusDp).toFloat()
+        val g = GradientDrawable()
+        g.shape = GradientDrawable.RECTANGLE
+        g.cornerRadius = radius
+        g.colors = intArrayOf(
+            Color.parseColor("#66FFFFFF"),
+            Color.parseColor("#33FFFFFF"),
+            Color.parseColor("#22FFFFFF")
         )
-        g.cornerRadius = dp(r).toFloat()
-        g.setStroke(dp(1), Color.parseColor("#66FFFFFF"))
-        return g
+        g.gradientType = GradientDrawable.LINEAR_GRADIENT
+        g.orientation = GradientDrawable.Orientation.TL_BR
+        g.setStroke(dp(1), Color.parseColor("#88FFFFFF"))
+
+        val edge = object : GradientDrawable() {
+            override fun draw(canvas: Canvas) {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                val w = bounds.width().toFloat()
+                val h = bounds.height().toFloat()
+                val shader = LinearGradient(
+                    0f, 0f, w, 0f,
+                    intArrayOf(
+                        Color.parseColor("#55FFFFFF"),
+                        Color.parseColor("#00FFFFFF"),
+                        Color.parseColor("#00FFFFFF"),
+                        Color.parseColor("#55FFFFFF")
+                    ),
+                    floatArrayOf(0f, 0.15f, 0.85f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+                p.shader = shader
+                canvas.drawRoundRect(0f, 0f, w, h, radius, radius, p)
+            }
+        }
+        edge.shape = GradientDrawable.RECTANGLE
+        edge.cornerRadius = radius
+
+        return LayerDrawable(arrayOf(g, edge))
+    }
+
+    private fun liquidGlassPillDim(radiusDp: Int): LayerDrawable {
+        val radius = dp(radiusDp).toFloat()
+        val g = GradientDrawable()
+        g.shape = GradientDrawable.RECTANGLE
+        g.cornerRadius = radius
+        g.colors = intArrayOf(
+            Color.parseColor("#33FFFFFF"),
+            Color.parseColor("#22FFFFFF"),
+            Color.parseColor("#11FFFFFF")
+        )
+        g.gradientType = GradientDrawable.LINEAR_GRADIENT
+        g.orientation = GradientDrawable.Orientation.TL_BR
+        g.setStroke(dp(1), Color.parseColor("#55FFFFFF"))
+        return LayerDrawable(arrayOf(g))
+    }
+
+    private fun liquidGlassPanel(radiusDp: Int, top: Boolean): LayerDrawable {
+        val radius = dp(radiusDp).toFloat()
+        val g = GradientDrawable()
+        g.shape = GradientDrawable.RECTANGLE
+        g.cornerRadius = radius
+        g.colors = if (top) intArrayOf(
+            Color.parseColor("#77FFFFFF"),
+            Color.parseColor("#44FFFFFF"),
+            Color.parseColor("#22FFFFFF")
+        ) else intArrayOf(
+            Color.parseColor("#66FFFFFF"),
+            Color.parseColor("#33FFFFFF"),
+            Color.parseColor("#11FFFFFF")
+        )
+        g.gradientType = GradientDrawable.LINEAR_GRADIENT
+        g.orientation = if (top) GradientDrawable.Orientation.TOP_BOTTOM
+                        else GradientDrawable.Orientation.BOTTOM_TOP
+        g.setStroke(dp(1), Color.parseColor("#88FFFFFF"))
+
+        val edge = object : GradientDrawable() {
+            override fun draw(canvas: Canvas) {
+                val p = Paint(Paint.ANTI_ALIAS_FLAG)
+                val w = bounds.width().toFloat()
+                val h = bounds.height().toFloat()
+                val shader = LinearGradient(
+                    0f, 0f, w, 0f,
+                    intArrayOf(
+                        Color.parseColor("#66FFFFFF"),
+                        Color.parseColor("#00FFFFFF"),
+                        Color.parseColor("#00FFFFFF"),
+                        Color.parseColor("#66FFFFFF")
+                    ),
+                    floatArrayOf(0f, 0.12f, 0.88f, 1f),
+                    Shader.TileMode.CLAMP
+                )
+                p.shader = shader
+                canvas.drawRect(0f, 0f, w, h, p)
+            }
+        }
+        edge.shape = GradientDrawable.RECTANGLE
+        return LayerDrawable(arrayOf(g, edge))
     }
 }
