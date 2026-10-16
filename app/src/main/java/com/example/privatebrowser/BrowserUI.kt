@@ -56,7 +56,7 @@ class BrowserUI(private val ctx: Context) {
         topBlock = LinearLayout(ctx)
         topBlock.orientation = LinearLayout.VERTICAL
         topBlock.setPadding(dp(10), dp(10), dp(10), dp(8))
-        topBlock.background = liquidGlassPanel(0, true)
+        topBlock.background = liquidGlassPanel(true)
         topBlock.elevation = dp(10).toFloat()
 
         val urlRow = LinearLayout(ctx)
@@ -107,7 +107,7 @@ class BrowserUI(private val ctx: Context) {
         bottomBar.orientation = LinearLayout.HORIZONTAL
         bottomBar.gravity = Gravity.CENTER
         bottomBar.setPadding(dp(18), dp(12), dp(18), dp(12))
-        bottomBar.background = liquidGlassPanel(0, false)
+        bottomBar.background = liquidGlassPanel(false)
         bottomBar.elevation = dp(12).toFloat()
 
         val tabsBtn = liquidButton("[=]")
@@ -159,6 +159,9 @@ class BrowserUI(private val ctx: Context) {
         val s = IntArray(2); button.getLocationOnScreen(s)
         val sx = s[0]; val sy = s[1]; val sw = button.width; val sh = button.height
 
+        val targetH = dp(36)
+        val targetW = dp(140)
+
         val ghost = TextView(ctx)
         ghost.text = "Новая вкладка"
         ghost.setTextColor(Color.WHITE)
@@ -171,12 +174,13 @@ class BrowserUI(private val ctx: Context) {
 
         val rv = button.rootView as ViewGroup
         val lp = FrameLayout.LayoutParams(sw, sh)
-        lp.leftMargin = sx; lp.topMargin = sy
+        lp.leftMargin = sx
+        lp.topMargin = sy
         rv.addView(ghost, lp)
 
         val endLoc = IntArray(2); tabStrip.getLocationOnScreen(endLoc)
         val endX = endLoc[0] + tabStrip.width + dp(6)
-        val endY = endLoc[1]
+        val endY = endLoc[1] + (tabStrip.height - targetH) / 2
 
         val ax = ValueAnimator.ofInt(sx, endX)
         ax.duration = 900
@@ -188,7 +192,7 @@ class BrowserUI(private val ctx: Context) {
         ay.interpolator = DecelerateInterpolator()
         ay.addUpdateListener { ghost.translationY = ((it.animatedValue as Int) - sy).toFloat() }
 
-        val aw = ValueAnimator.ofInt((sw * 1.4f).toInt(), dp(140))
+        val aw = ValueAnimator.ofInt(sw, targetW)
         aw.duration = 900
         aw.addUpdateListener {
             val p = ghost.layoutParams as FrameLayout.LayoutParams
@@ -196,12 +200,12 @@ class BrowserUI(private val ctx: Context) {
             ghost.layoutParams = p
         }
 
-        val ah = ValueAnimator.ofFloat(1.0f, 1.15f, 1.0f)
+        val ah = ValueAnimator.ofInt(sh, targetH)
         ah.duration = 900
         ah.addUpdateListener {
-            val k = it.animatedValue as Float
-            ghost.scaleY = k
-            ghost.scaleX = 1f / k
+            val p = ghost.layoutParams as FrameLayout.LayoutParams
+            p.height = it.animatedValue as Int
+            ghost.layoutParams = p
         }
 
         button.animate().scaleX(0.85f).scaleY(0.85f).setDuration(260).withEndAction {
@@ -213,9 +217,8 @@ class BrowserUI(private val ctx: Context) {
 
         ax.addListener(object : AnimatorListenerAdapter() {
             override fun onAnimationEnd(a: Animator) {
-                ghost.animate().alpha(0f).setDuration(260).withEndAction {
-                    rv.removeView(ghost); onDone()
-                }.start()
+                rv.removeView(ghost)
+                onDone()
             }
         })
     }
@@ -238,7 +241,7 @@ class BrowserUI(private val ctx: Context) {
     }
 
     fun animatePillIn(pill: View) {
-        pill.alpha = 0f
+        pill.alpha = 1f
         pill.scaleX = 0.6f
         pill.scaleY = 0.6f
         pill.animate().alpha(1f).scaleX(1f).scaleY(1f)
@@ -335,7 +338,6 @@ class BrowserUI(private val ctx: Context) {
         }
         edge.shape = GradientDrawable.RECTANGLE
         edge.cornerRadius = radius
-
         return LayerDrawable(arrayOf(g, edge))
     }
 
@@ -355,11 +357,9 @@ class BrowserUI(private val ctx: Context) {
         return LayerDrawable(arrayOf(g))
     }
 
-    private fun liquidGlassPanel(radiusDp: Int, top: Boolean): LayerDrawable {
-        val radius = dp(radiusDp).toFloat()
+    private fun liquidGlassPanel(top: Boolean): LayerDrawable {
         val g = GradientDrawable()
         g.shape = GradientDrawable.RECTANGLE
-        g.cornerRadius = radius
         g.colors = if (top) intArrayOf(
             Color.parseColor("#77FFFFFF"),
             Color.parseColor("#44FFFFFF"),
